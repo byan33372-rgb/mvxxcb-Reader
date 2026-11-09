@@ -1,0 +1,12 @@
+# WP-M 生成（根 .gitignore）
+*.iml
+.gradle/
+/local.properties
+.idea/
+.DS_Store
+build/
+/captures
+.externalNativeBuild
+.cxx
+
+# 注意：app/schemas/（Room schema 导出）必须随仓库提交（03 §6，QA 迁移测试依据），不在此忽略。

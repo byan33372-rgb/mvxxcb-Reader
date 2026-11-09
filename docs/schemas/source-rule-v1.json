@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://mvxxcb.reader/schemas/source-rule-v1.json",
+  "title": "SourceRule v1",
+  "type": "object",
+  "required": ["ruleId", "domain", "version"],
+  "additionalProperties": false,
+  "properties": {
+    "ruleId":  { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{1,63}$|manual\\.[a-z0-9.-]{3,80}$", "example": "example-novel.touch.v1" },
+    "domain":  { "type": "string", "pattern": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$", "example": "www.example-novel.com" },
+    "version": { "type": "integer", "minimum": 1, "maximum": 999999 },
+    "enabled": { "type": "boolean", "default": true },
+    "encoding":{ "type": ["string", "null"], "enum": ["UTF-8", "GBK", "GB18030", "BIG5", null], "default": null },
+
+    "bookNameSelector":       { "$ref": "#/definitions/selectorDef" },
+    "authorSelector":         { "$ref": "#/definitions/selectorDef" },
+    "coverSelector":          { "$ref": "#/definitions/selectorDef" },
+    "descriptionSelector":    { "$ref": "#/definitions/selectorDef" },
+    "catalogSelector":        { "$ref": "#/definitions/selectorDef" },
+    "catalogNextPageSelector":{ "$ref": "#/definitions/selectorDef" },
+    "chapterTitleSelector":   { "$ref": "#/definitions/selectorDef" },
+    "chapterLinkSelector":    { "$ref": "#/definitions/selectorDef" },
+    "contentSelector":        { "$ref": "#/definitions/selectorDef" },
+    "nextPageSelector":       { "$ref": "#/definitions/selectorDef" },
+    "nextChapterSelector":    { "$ref": "#/definitions/selectorDef" },
+    "previousChapterSelector":{ "$ref": "#/definitions/selectorDef" },
+    "contentMaxPages":        { "type": "integer", "minimum": 1, "maximum": 20, "default": 10 },
+
+    "contentCleaningRules": {
+      "type": "array", "maxItems": 32,
+      "items": { "$ref": "#/definitions/cleaningRule" }
+    }
+  },
+  "definitions": {
+    "selectorDef": {
+      "oneOf": [
+        { "type": "string", "minLength": 1, "maxLength": 300,
+          "description": "CSS 选择器简写；默认取文本。可加 \"@attr\" 后缀取属性，如 \"div.cover img@src\"" },
+        { "type": "object", "required": ["type", "expr"], "additionalProperties": false,
+          "properties": {
+            "type": { "enum": ["css", "xpath", "regex", "jsonpath"] },
+            "expr": { "type": "string", "minLength": 1, "maxLength": 300 },
+            "attr": { "type": "string", "maxLength": 20, "default": "text",
+                      "description": "仅 css：text/html/href/src/abs:href/content 等" }
+          } }
+      ]
+    },
+    "cleaningRule": {
+      "type": "object", "required": ["type", "pattern"], "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["regex", "selector", "whitespace"] },
+        "pattern":     { "type": "string", "minLength": 1, "maxLength": 300 },
+        "replacement": { "type": "string", "maxLength": 100, "default": "" }
+      }
+    }
+  }
+}
