@@ -13,6 +13,7 @@ object Routes {
     const val READER_SETTINGS = "settings/reader"
     const val RULES = "settings/rules"
     const val RULE_EDIT = "settings/rules/edit?domain={domain}"    // domain 为空 = 新建
+    const val CRAWL_CENTER = "crawl"                               // 采集任务管理（契约 v1.1 K13；入口：我的+书详情）
     fun bookDetail(bookId: Long) = "book/$bookId"
     fun catalog(bookId: Long, focusChapterId: Long? = null) =
         "book/$bookId/catalog" + (focusChapterId?.let { "?focusChapterId=$it" } ?: "")

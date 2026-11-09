@@ -59,6 +59,19 @@ android {
             isIncludeAndroidResources = true
         }
     }
+
+    sourceSets {
+        // WP-M（T-D4）：Room schema JSON 挂载，供 Robolectric 单测的 MigrationTestHelper
+        // 按 com.mvxxcb.reader.data.db.AppDatabase/<version>.json 装载。
+        //
+        // 实证（AGP 8.7.3）：test sourceSet 挂 assets 不生效——插件无 mergeDebugUnitTestAssets
+        // 任务，test_config.properties 的 android_merged_assets 指向应用 debug 变体的
+        // mergeDebugAssets（仅合并 main+debug buildType），Robolectric 资产只认该目录。
+        // 故 schema 需挂 debug 变体 assets：单测可用，release APK 不含 schema。
+        getByName("debug") {
+            assets.srcDir("$projectDir/schemas")
+        }
+    }
 }
 
 ksp {
@@ -111,6 +124,8 @@ dependencies {
     testImplementation(libs.room.testing)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.mockwebserver)
+    // WP-M（T-D1/T-D4）：work-testing（WorkManagerTestInitHelper，二期 Worker 测试用）
+    testImplementation(libs.work.testing)
 
     // —— 仪器测试（WP-U/WP-Q） ——
     androidTestImplementation(platform(libs.compose.bom))

@@ -45,5 +45,8 @@ data class ReadingProgressEntity(
     @ColumnInfo(defaultValue = "0.0") val inChapterFraction: Double = 0.0,
     // 全书 0..100
     @ColumnInfo(defaultValue = "0.0") val progressPercentage: Double = 0.0,
+    // 2.0（DB v2，07 §3.1-a）：字符偏移主锚点（连续阅读）；-1=旧数据 sentinel（fraction 链路恢复，
+    // 用户翻页后自愈写新锚点）
+    @ColumnInfo(defaultValue = "-1") val charOffset: Long = -1L,
     val updatedAt: Long,
 )

@@ -47,4 +47,6 @@ data class BookEntity(
     @ColumnInfo(defaultValue = "0") val isTemporary: Boolean = false,
     // 如 "GBK"，重取时提示 parser
     val sourceEncoding: String? = null,
+    // 2.0（DB v2，07 §3.1-e）：0=WEB / 1=LOCAL_TXT / 2=EPUB；老数据 default 语义正确
+    @ColumnInfo(defaultValue = "0") val sourceType: Int = 0,
 )

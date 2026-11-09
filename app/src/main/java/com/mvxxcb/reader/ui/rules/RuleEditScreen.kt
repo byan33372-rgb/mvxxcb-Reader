@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -20,7 +21,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
@@ -41,6 +41,7 @@ import com.mvxxcb.reader.presentation.rules.RuleManagerEvent
 import com.mvxxcb.reader.presentation.rules.RuleManagerViewModel
 import com.mvxxcb.reader.presentation.rules.SourceRuleDraft
 import com.mvxxcb.reader.ui.components.ErrorBanner
+import com.mvxxcb.reader.ui.components.WindowAdaptiveLayout
 import com.mvxxcb.reader.ui.theme.spacing
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,7 +67,8 @@ fun RuleEditScreen(
         }
     }
 
-    Scaffold(
+    // WP-INS（07 §6.2）：AdaptiveScaffold + imePadding（表单输入由软键盘顶起；scaffold 已排除 ime，无重复 insets）
+    WindowAdaptiveLayout(
         modifier = modifier,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -102,13 +104,14 @@ fun RuleEditScreen(
                 }
                 Text("正在加载规则…")
             }
-            return@Scaffold
+            return@WindowAdaptiveLayout
         }
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(
                     horizontal = MaterialTheme.spacing.screenH,

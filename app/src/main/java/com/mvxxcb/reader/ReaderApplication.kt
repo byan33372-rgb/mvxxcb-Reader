@@ -16,5 +16,8 @@ class ReaderApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        // 2.0 采集引擎：进程重启后对齐 WAITING/RUNNING 任务与 WorkManager 队列（07 风险#7；
+        // 异步执行，不阻塞冷启动预算）
+        container.onAppStart()
     }
 }

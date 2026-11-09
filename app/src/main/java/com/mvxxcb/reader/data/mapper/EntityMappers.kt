@@ -82,6 +82,7 @@ fun ReadingProgressEntity.toDomain(): ReadingProgress = ReadingProgress(
     pageIndex = pageIndex,
     inChapterFraction = inChapterFraction,
     progressPercentage = progressPercentage,
+    charOffset = charOffset,
     updatedAt = updatedAt,
 )
 
@@ -93,6 +94,8 @@ fun ReadingProgress.toEntity(): ReadingProgressEntity = ReadingProgressEntity(
     pageIndex = pageIndex,
     inChapterFraction = inChapterFraction,
     progressPercentage = progressPercentage,
+    // 2.0（07 §5.4）：字符偏移主锚点（连续阅读）；旧数据/翻页模式保持 -1 sentinel
+    charOffset = charOffset,
     updatedAt = updatedAt,
 )
 

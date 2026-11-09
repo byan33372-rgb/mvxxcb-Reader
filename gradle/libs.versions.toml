@@ -56,6 +56,8 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workRuntimeKtx" }
+# WP-M（T-D1/T-D4）：work-testing 与 runtime 同版本对齐（二期 Worker 测试用，主 Agent 已批准）
+work-testing = { group = "androidx.work", name = "work-testing", version.ref = "workRuntimeKtx" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coilCompose" }
 # —— 测试基线（01 §4.2；compose-ui-test 经 BOM） ——
 junit = { group = "junit", name = "junit", version.ref = "junit" }

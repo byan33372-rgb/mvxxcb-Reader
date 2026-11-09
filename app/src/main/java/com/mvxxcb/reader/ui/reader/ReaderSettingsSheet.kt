@@ -25,7 +25,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.mvxxcb.reader.R
 import com.mvxxcb.reader.domain.model.BackgroundTheme
 import com.mvxxcb.reader.domain.model.BrightnessMode
 import com.mvxxcb.reader.domain.model.ReaderSettings
@@ -93,7 +95,7 @@ fun ReaderSettingsSheet(
                 }
             }
 
-            // —— 翻页模式 ——
+            // —— 阅读模式（2.0：滚动/翻页/连续，07 §5） ——
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.sm),
@@ -108,6 +110,11 @@ fun ReaderSettingsSheet(
                     selected = settings.readingMode == ReadingMode.PAGE_SIMULATED,
                     onClick = { onSettingsChange { it.copy(readingMode = ReadingMode.PAGE_SIMULATED) } },
                     label = { Text("翻页") },
+                )
+                FilterChip(
+                    selected = settings.readingMode == ReadingMode.CONTINUOUS,
+                    onClick = { onSettingsChange { it.copy(readingMode = ReadingMode.CONTINUOUS) } },
+                    label = { Text(stringResource(R.string.mode_continuous)) },
                 )
             }
 

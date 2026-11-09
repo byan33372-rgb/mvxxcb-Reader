@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,7 +31,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -56,6 +56,7 @@ import com.mvxxcb.reader.presentation.importing.ImportEvent
 import com.mvxxcb.reader.presentation.importing.ImportViewModel
 import com.mvxxcb.reader.ui.components.ErrorBanner
 import com.mvxxcb.reader.ui.components.InlineLoadingBar
+import com.mvxxcb.reader.ui.components.WindowAdaptiveLayout
 import java.net.URI
 import com.mvxxcb.reader.ui.theme.spacing
 
@@ -77,7 +78,8 @@ fun ImportScreen(
         if (!initialSharedText.isNullOrBlank()) viewModel.onSharedText(initialSharedText)
     }
 
-    Scaffold(
+    // WP-INS（07 §6.2）：AdaptiveScaffold + imePadding（软键盘顶起输入框；scaffold 已排除 ime，无重复 insets）
+    WindowAdaptiveLayout(
         modifier = modifier,
         topBar = { TopAppBar(title = { Text("发现·导入") }) },
     ) { padding ->
@@ -85,6 +87,7 @@ fun ImportScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = MaterialTheme.spacing.screenH, vertical = MaterialTheme.spacing.screenV),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.md),

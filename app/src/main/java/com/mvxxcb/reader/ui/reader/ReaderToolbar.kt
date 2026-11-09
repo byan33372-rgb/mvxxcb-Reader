@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -61,9 +63,11 @@ fun ReaderTopBar(
         exit = slideOutVertically { -it },
     ) {
         Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 4.dp) {
+            // WP-INS（07 §6.2）：工具栏展开（系统栏 show）时顶栏避开状态栏/挖孔；沉浸隐藏时该 padding 自然为 0
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .statusBarsPadding()
                     .padding(horizontal = 4.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -114,7 +118,12 @@ fun ReaderBottomBar(
         exit = slideOutVertically { it },
     ) {
         Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 4.dp) {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            // WP-INS（07 §6.2）：底栏避开导航栏/手势区（三键导航与手势导航均由 navigationBars insets 覆盖）
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding(),
+            ) {
                 Text(
                     text = buildString {
                         append(progressText)
