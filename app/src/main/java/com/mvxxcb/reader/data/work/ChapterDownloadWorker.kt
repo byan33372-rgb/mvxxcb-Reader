@@ -26,6 +26,7 @@ import com.mvxxcb.reader.domain.model.CrawlState
 import com.mvxxcb.reader.domain.model.CrawlTask
 import com.mvxxcb.reader.domain.repository.BookRepository
 import com.mvxxcb.reader.domain.repository.ChapterRepository
+import com.mvxxcb.reader.domain.repository.LocalBookRepository
 import com.mvxxcb.reader.domain.repository.CrawlTaskRepository
 import com.mvxxcb.reader.parser.core.ParseOutcome
 import kotlinx.coroutines.CancellationException
@@ -77,6 +78,7 @@ class ChapterDownloadWorker internal constructor(
         val bookRepository: BookRepository,
         val fetcher: ChapterFetcher,
         val txtExporter: TxtExporter,
+        val localBookRepository: LocalBookRepository? = null,
         val timeProvider: TimeProvider,
         val logger: AppLogger,
     ) {
@@ -89,6 +91,7 @@ class ChapterDownloadWorker internal constructor(
                     bookRepository = container.bookRepository,
                     fetcher = container.chapterFetcher,
                     txtExporter = container.txtExporter,
+                    localBookRepository = container.localBookRepository,
                     timeProvider = container.timeProvider,
                     logger = container.logger,
                 )
@@ -193,12 +196,31 @@ class ChapterDownloadWorker internal constructor(
             lastNotifyAt = notifyProgressThrottled(book.title, ok + failed, pending.size, lastNotifyAt, d)
         }
 
-        // ———— 收尾：全成 → TXT → COMPLETED；有失败 → FAILED（Q3：不生成 TXT） ————
+        // ———— 收尾：全成 → TXT → LocalBook 登记 → COMPLETED；有失败 → FAILED（Q3：不生成 TXT） ————
         return if (failed == 0) {
             val txtFile = TxtFilePaths.txtFileFor(applicationContext.filesDir, task.bookId, book.title)
             when (val exported = d.txtExporter.export(task.bookId, txtFile.absolutePath)) {
                 is AppResult.Success -> {
                     repo.markTxtGenerated(taskId, txtFile.absolutePath)
+                    // 2.0 需求「TXT 自动进入本地书架」：采集完成即登记 LocalBook（幂等覆盖）
+                    d.localBookRepository?.let { localRepo ->
+                        val now = System.currentTimeMillis()
+                        val existing = localRepo.getByBookId(task.bookId)
+                        localRepo.upsert(
+                            com.mvxxcb.reader.domain.model.LocalBook(
+                                id = existing?.id ?: 0L,
+                                bookId = task.bookId,
+                                filePath = txtFile.absolutePath,
+                                format = "TXT",
+                                fileSize = exported.value.fileSize,
+                                chapterCount = exported.value.chapterCount,
+                                completedChapterCount = exported.value.completedChapterCount,
+                                isComplete = exported.value.failedChapterIds.isEmpty(),
+                                createdAt = existing?.createdAt ?: now,
+                                updatedAt = now,
+                            )
+                        )
+                    }
                     val completedState = repo.updateState(taskId, CrawlState.COMPLETED)
                     notifyResult(
                         book, success = true,

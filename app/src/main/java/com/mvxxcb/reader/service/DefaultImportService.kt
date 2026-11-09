@@ -77,10 +77,17 @@ class DefaultImportService(
                     is AppResult.Success -> {
                         val res = resolution.value
                         if (!res.requiresCatalogHint && res.detail != null && res.catalog != null) {
-                            // 回溯成功：完整书导入（复用 resolver 已解析的详情/目录，避免重复抓取）
+                            // 回溯成功：完整书导入（复用 resolver 已解析的详情/目录，避免重复抓取）。
+                            // 去重归一：sourceUrl 用定位到的详情页 URL（而非输入章节 URL），
+                            // 保证同一本书从任意章节导入都合并到同一条目（2.0 验收实测缺陷修复）。
+                            val resolvedSourceUrl = res.detailUrl ?: res.normalizedUrl
+                            // 标题保护：回溯详情解析自章节页时标题常带"卷/章节"尾巴——命中已有书时
+                            // 置空标题走"非空才覆盖"合并，保留用户已确认的书名。
+                            val existing = bookRepository.findByNormalizedSourceUrl(resolvedSourceUrl)
+                            val detail = if (existing != null) res.detail.copy(title = null) else res.detail
                             emit(ImportStep.PhaseChanged(ImportPhase.SAVING))
                             val upsert = when (val result = bookRepository.upsertFromImport(
-                                res.detail, res.normalizedUrl, res.catalog, isTemporary = false,
+                                detail, resolvedSourceUrl, res.catalog, isTemporary = false,
                             )) {
                                 is AppResult.Success -> result.value
                                 is AppResult.Failure -> {

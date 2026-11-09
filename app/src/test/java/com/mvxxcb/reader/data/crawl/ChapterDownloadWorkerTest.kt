@@ -107,7 +107,7 @@ class ChapterDownloadWorkerTest {
     }
 
     private fun newDeps(fetcher: ChapterFetcher): ChapterDownloadWorker.Deps =
-        ChapterDownloadWorker.Deps(crawlRepo, chapterRepo, bookRepo, fetcher, exporter, time, logger)
+        ChapterDownloadWorker.Deps(crawlRepo, chapterRepo, bookRepo, fetcher, exporter, localBookRepository = null, timeProvider = time, logger = logger)
 
     private suspend fun setupBookWithChapters(count: Int): Triple<Long, List<Long>, List<String>> {
         val bookId = TestSupport.insertBook(db, title = "测试之书")
