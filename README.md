@@ -52,7 +52,7 @@ minSdk 26 · target/compile 35 · applicationId `com.mvxxcb.reader` · 应用名
 
 ## 测试
 
-- 单元/集成 **232 用例**（parser 102 + data 29 + reader 16 + security 57 + integration 28），全部真实执行通过；固定 HTML 样本 19 个（`app/src/test/resources/html-samples/`）+ MockWebServer + Robolectric + Room 内存库。
+- 单元/集成 **234 用例**（parser 102 + data 29 + reader 20 + security 57 + integration 26），全部真实执行通过；固定 HTML 样本 19 个（`app/src/test/resources/html-samples/`）+ MockWebServer + Robolectric + Room 内存库。
 - 模拟器验收：`docs/qa/模拟器验收执行单.md`（执行单 + 记录 + 结论）；真实站点全链路（linovelib.com）截图证据 20+ 张。
 
 ## 已知问题与限制
