@@ -87,10 +87,10 @@ class ReaderSettingsDataStore(
             prefs[SettingsKeys.Reader.BACKGROUND_THEME], "reader.backgroundTheme",
             BackgroundTheme.CREAM, logger,
         ),
-        readingMode = EnumParser.parseOr(
-            prefs[SettingsKeys.Reader.READING_MODE], "reader.readingMode",
-            ReadingMode.SCROLL, logger,
-        ),
+        // 2.0（07 §9 Q1）：新装默认 CONTINUOUS（key 从未写入 = 新装语义）；
+        // 老用户已存 SCROLL/PAGE_SIMULATED 自动保留；已存非法值仍按 03 §4 回退 SCROLL
+        //（EnumParser 口径，SettingsDataStoreTest 冻结），读后自愈写新值。
+        readingMode = parseReadingMode(prefs, logger),
         brightnessMode = EnumParser.parseOr(
             prefs[SettingsKeys.Reader.BRIGHTNESS_MODE], "reader.brightnessMode",
             BrightnessMode.SYSTEM, logger,
@@ -104,4 +104,14 @@ class ReaderSettingsDataStore(
         keepScreenOn = prefs[SettingsKeys.Reader.KEEP_SCREEN_ON] ?: false,
         autoPrefetchNext = prefs[SettingsKeys.Reader.AUTO_PREFETCH_NEXT] ?: true,
     )
+
+    private fun parseReadingMode(prefs: Preferences, logger: AppLogger): ReadingMode =
+        if (prefs[SettingsKeys.Reader.READING_MODE] == null) {
+            ReadingMode.CONTINUOUS
+        } else {
+            EnumParser.parseOr(
+                prefs[SettingsKeys.Reader.READING_MODE], "reader.readingMode",
+                ReadingMode.SCROLL, logger,
+            )
+        }
 }

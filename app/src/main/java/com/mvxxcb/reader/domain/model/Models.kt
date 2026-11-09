@@ -50,6 +50,9 @@ data class ReadingProgress(
     val pageIndex: Int?,                // 翻页模式：页序号 0-based
     val inChapterFraction: Double,      // 统一章内位置 0.0..1.0（重排版恢复用，必填）
     val progressPercentage: Double,     // 全书进度 0.0..100.0
+    // 2.0（07 §5.4）：字符偏移主锚点（连续阅读）。-1 = 旧数据 sentinel（fraction 链路恢复，
+    // 用户继续阅读后自愈写新锚点）。DB v2 列 reading_progress.charOffset 已由 WP-M0 预建。
+    val charOffset: Long = -1L,
     val updatedAt: Long,
 )
 
@@ -94,7 +97,9 @@ data class ReaderSettings(
 
 enum class ReaderFontFamily { SYSTEM, SANS, SERIF, MONOSPACE }        // 自定义字体文件 = 二期
 enum class BackgroundTheme { WHITE, CREAM, EYE_CARE_GREEN, DARK_GRAY, BLACK }
-enum class ReadingMode { SCROLL, PAGE_SIMULATED }
+// 2.0（07 §5）：CONTINUOUS 连续滚动模式（ReaderItem 流 + 章节窗口驻留 + charOffset 主锚点）。
+// DataStore 新装默认 CONTINUOUS；老用户已存 SCROLL/PAGE_SIMULATED 值自动保留。
+enum class ReadingMode { SCROLL, PAGE_SIMULATED, CONTINUOUS }
 enum class BrightnessMode { SYSTEM, CUSTOM }
 enum class ScreenOrientation { SYSTEM, PORTRAIT, LANDSCAPE }
 

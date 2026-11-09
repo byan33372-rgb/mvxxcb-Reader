@@ -6,13 +6,20 @@ import com.mvxxcb.reader.common.time.TimeProvider
 import com.mvxxcb.reader.domain.error.ReaderError
 import com.mvxxcb.reader.domain.error.StateFailure
 import com.mvxxcb.reader.domain.model.CatalogMergeReport
+import com.mvxxcb.reader.domain.model.CrawlState
+import com.mvxxcb.reader.domain.model.LocalBook
 import com.mvxxcb.reader.domain.model.ParsedBookDetail
 import com.mvxxcb.reader.domain.model.ReaderContent
 import com.mvxxcb.reader.domain.repository.BookRepository
 import com.mvxxcb.reader.domain.repository.ChapterRepository
+import com.mvxxcb.reader.domain.repository.CrawlTaskRepository
+import com.mvxxcb.reader.domain.repository.LocalBookRepository
 import com.mvxxcb.reader.domain.service.ReadingService
+import com.mvxxcb.reader.data.work.CrawlTaskScheduler
+import com.mvxxcb.reader.domain.export.TxtExporter
 import com.mvxxcb.reader.parser.core.ParseRequest
 import com.mvxxcb.reader.parser.pipeline.ParserPipeline
+import kotlinx.coroutines.flow.first
 
 /**
  * 阅读取数实现（契约 02 §6.2；装配层组合 parser+data）。
@@ -28,6 +35,12 @@ class DefaultReadingService(
     private val pipeline: ParserPipeline,
     private val timeProvider: TimeProvider,
     private val logger: AppLogger,
+    // 2.0 采集门面（契约 v1.1 K10）；可空参数保持一期构造兼容（QA 集成测试假体不受影响）
+    private val crawlTaskRepository: CrawlTaskRepository? = null,
+    private val crawlScheduler: CrawlTaskScheduler? = null,
+    private val txtExporter: TxtExporter? = null,
+    private val localBookRepository: LocalBookRepository? = null,
+    private val txtPathBuilder: ((bookId: Long, title: String) -> String)? = null,
 ) : ReadingService {
 
     override suspend fun loadChapter(
@@ -119,6 +132,140 @@ class DefaultReadingService(
             current.copy(currentChapterId = chapterId, lastReadAt = now, updatedAt = now)
         }.onFailure { logger.w(TAG, "触达更新失败（忽略） bookId=$bookId") }
     }
+
+    // ———— 2.0 采集门面（契约 v1.1 K10；主 Agent 整合批次实现，机制由 WP-C 提供） ————
+
+    override suspend fun downloadWholeBook(bookId: Long): AppResult<com.mvxxcb.reader.domain.model.CrawlTask> {
+        val repo = requireCrawl() ?: return notAssembled()
+        val book = bookRepository.getBook(bookId)
+            ?: return AppResult.Failure(ReaderError.State(StateFailure.BOOK_NOT_FOUND, debugDetail = "bookId=$bookId"))
+        if (book.totalChapters <= 0) {
+            return AppResult.Failure(
+                ReaderError.State(StateFailure.INVALID_ARGUMENT, debugDetail = "无目录：请先在详情页更新目录后再下载整本")
+            )
+        }
+        // 同书幂等复用由 CrawlTaskRepositoryImpl.createTask 保证（非终态任务直接返回）
+        return when (val created = repo.createTask(bookId, book.totalChapters)) {
+            is AppResult.Failure -> created
+            is AppResult.Success -> {
+                crawlScheduler?.enqueueCrawl(created.value.id, bookId)
+                    ?: logger.w(TAG, "CrawlTaskScheduler 未装配，任务已建但未入队 taskId=${created.value.id}")
+                AppResult.Success(created.value)
+            }
+        }
+    }
+
+    override suspend fun pauseCrawl(taskId: Long): AppResult<Unit> {
+        val repo = requireCrawl() ?: return notAssembled()
+        return repo.updateState(taskId, CrawlState.PAUSED)
+    }
+
+    override suspend fun resumeCrawl(taskId: Long): AppResult<Unit> {
+        val repo = requireCrawl() ?: return notAssembled()
+        val task = repo.observeTask(taskId).first()
+            ?: return AppResult.Failure(ReaderError.State(StateFailure.CRAWL_TASK_NOT_FOUND, debugDetail = "taskId=$taskId"))
+        return when (val r = repo.updateState(taskId, CrawlState.RUNNING)) {
+            is AppResult.Failure -> r
+            is AppResult.Success -> {
+                crawlScheduler?.enqueueCrawl(taskId, task.bookId)
+                    ?: logger.w(TAG, "CrawlTaskScheduler 未装配，resume 仅改状态未入队 taskId=$taskId")
+                AppResult.Success(Unit)
+            }
+        }
+    }
+
+    override suspend fun cancelCrawl(taskId: Long): AppResult<Unit> {
+        val repo = requireCrawl() ?: return notAssembled()
+        return when (val r = repo.updateState(taskId, CrawlState.CANCELLED)) {
+            is AppResult.Failure -> r
+            is AppResult.Success -> {
+                crawlScheduler?.cancel(taskId)
+                AppResult.Success(Unit)
+            }
+        }
+    }
+
+    override suspend fun retryCrawlFailures(taskId: Long): AppResult<Unit> {
+        val repo = requireCrawl() ?: return notAssembled()
+        val task = repo.observeTask(taskId).first()
+            ?: return AppResult.Failure(ReaderError.State(StateFailure.CRAWL_TASK_NOT_FOUND, debugDetail = "taskId=$taskId"))
+        return when (val r = repo.updateState(taskId, CrawlState.WAITING)) {
+            is AppResult.Failure -> r
+            is AppResult.Success -> {
+                crawlScheduler?.enqueueCrawl(taskId, task.bookId)
+                    ?: logger.w(TAG, "CrawlTaskScheduler 未装配，重试仅改状态未入队 taskId=$taskId")
+                AppResult.Success(Unit)
+            }
+        }
+    }
+
+    /** 单章重采（用户任务书功能15）：强制绕过缓存重新解析入库；任务侧进度由 Worker 后续派生清单自然覆盖 */
+    override suspend fun retryChapter(bookId: Long, chapterId: Long): AppResult<com.mvxxcb.reader.domain.model.ChapterMeta> {
+        val meta = chapterRepository.getChapterMeta(chapterId)
+            ?: return AppResult.Failure(
+                ReaderError.State(StateFailure.CHAPTER_NOT_FOUND, debugDetail = "chapterId=$chapterId")
+            )
+        if (meta.bookId != bookId) {
+            return AppResult.Failure(
+                ReaderError.State(StateFailure.INVALID_ARGUMENT, debugDetail = "章节不属于该书 chapterId=$chapterId bookId=$bookId")
+            )
+        }
+        return when (val r = loadChapter(bookId, meta.chapterIndex, preferCache = false)) {
+            is AppResult.Failure -> r
+            is AppResult.Success -> AppResult.Success(meta)
+        }
+    }
+
+    override suspend fun exportBookTxt(bookId: Long): AppResult<LocalBook> {
+        val exporter = txtExporter
+            ?: return AppResult.Failure(ReaderError.State(StateFailure.INVALID_ARGUMENT, debugDetail = "TxtExporter 未装配"))
+        val repo = requireCrawl() ?: return notAssembled()
+        val localRepo = localBookRepository
+            ?: return AppResult.Failure(ReaderError.State(StateFailure.INVALID_ARGUMENT, debugDetail = "LocalBookRepository 未装配"))
+        val pathBuilder = txtPathBuilder
+            ?: return AppResult.Failure(ReaderError.State(StateFailure.INVALID_ARGUMENT, debugDetail = "txtPathBuilder 未装配"))
+        val book = bookRepository.getBook(bookId)
+            ?: return AppResult.Failure(ReaderError.State(StateFailure.BOOK_NOT_FOUND, debugDetail = "bookId=$bookId"))
+        val outPath = pathBuilder(bookId, book.title.ifBlank { "book-$bookId" })
+        return when (val exported = exporter.export(bookId, outPath)) {
+            is AppResult.Failure -> exported
+            is AppResult.Success -> {
+                val report = exported.value
+                val now = timeProvider.nowMillis()
+                val existing = localRepo.getByBookId(bookId)
+                val local = LocalBook(
+                    id = existing?.id ?: 0L,
+                    bookId = bookId,
+                    filePath = outPath,
+                    format = "TXT",
+                    fileSize = report.fileSize,
+                    chapterCount = report.chapterCount,
+                    completedChapterCount = report.completedChapterCount,
+                    isComplete = report.failedChapterIds.isEmpty(),
+                    createdAt = existing?.createdAt ?: now,
+                    updatedAt = now,
+                )
+                when (val registered = localRepo.upsert(local)) {
+                    is AppResult.Failure -> registered
+                    is AppResult.Success -> {
+                        // 任务侧 TXT 生成标记（尽力而为：取该书最近任务）
+                        val taskId = repo.observeTasks().first()
+                            .filter { it.bookId == bookId }
+                            .maxByOrNull { it.updatedAt }?.id
+                        taskId?.let { repo.markTxtGenerated(it, outPath) }
+                            ?.onFailure { logger.w(TAG, "markTxtGenerated 失败（忽略） taskId=$taskId") }
+                        AppResult.Success(local.copy(id = registered.value))
+                    }
+                }
+            }
+        }
+    }
+
+    private fun requireCrawl(): CrawlTaskRepository? = crawlTaskRepository
+
+    private fun notAssembled(): AppResult<Nothing> = AppResult.Failure(
+        ReaderError.State(StateFailure.INVALID_ARGUMENT, debugDetail = "采集服务未装配（crawlTaskRepository 为空）")
+    )
 
     private companion object {
         const val TAG = "DefaultReadingSvc"

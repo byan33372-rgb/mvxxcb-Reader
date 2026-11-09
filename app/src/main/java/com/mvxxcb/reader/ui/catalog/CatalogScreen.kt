@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,7 +31,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -56,6 +56,7 @@ import com.mvxxcb.reader.presentation.catalog.CatalogViewModel
 import com.mvxxcb.reader.ui.components.EmptyState
 import com.mvxxcb.reader.ui.components.ErrorBanner
 import com.mvxxcb.reader.ui.components.LoadingState
+import com.mvxxcb.reader.ui.components.WindowAdaptiveLayout
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -101,7 +102,8 @@ fun CatalogScreen(
         }
     }
 
-    Scaffold(
+    // WP-INS（07 §6.2）：AdaptiveScaffold 接入；搜索框输入由 imePadding 顶起（scaffold 已排除 ime，无重复 insets）
+    WindowAdaptiveLayout(
         modifier = modifier,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -145,7 +147,8 @@ fun CatalogScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
+                .padding(padding)
+                .imePadding(),
         ) {
             // 搜索框
             OutlinedTextField(

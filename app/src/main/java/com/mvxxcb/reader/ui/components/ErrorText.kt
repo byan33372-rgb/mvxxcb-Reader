@@ -63,6 +63,7 @@ fun ReaderError.messageResId(): Int = when (this) {
         ParseFailure.LOW_CONFIDENCE -> R.string.error_parse_low_confidence
         ParseFailure.DUPLICATE_CHAPTER_CONFLICT -> R.string.error_parse_duplicate_chapter_conflict
         ParseFailure.TIMEOUT_BUDGET_EXCEEDED -> R.string.error_parse_timeout_budget_exceeded
+        ParseFailure.CATALOG_UNRESOLVED -> R.string.error_parse_catalog_unresolved
     }
 
     is ReaderError.Security -> when (reason) {
@@ -83,6 +84,7 @@ fun ReaderError.messageResId(): Int = when (this) {
         StorageFailure.DISK_IO -> R.string.error_storage_disk_io
         StorageFailure.DISK_FULL -> R.string.error_storage_disk_full
         StorageFailure.CACHE_CORRUPT -> R.string.error_storage_cache_corrupt
+        StorageFailure.TXT_WRITE_FAILED -> R.string.error_storage_txt_write_failed
     }
 
     is ReaderError.State -> when (failure) {
@@ -90,6 +92,9 @@ fun ReaderError.messageResId(): Int = when (this) {
         StateFailure.CHAPTER_NOT_FOUND -> R.string.error_state_chapter_not_found
         StateFailure.CHAPTER_NOT_CACHED -> R.string.error_state_chapter_not_cached
         StateFailure.INVALID_ARGUMENT -> R.string.error_state_invalid_argument
+        StateFailure.CRAWL_TASK_NOT_FOUND -> R.string.error_state_crawl_task_not_found
+        StateFailure.INVALID_TASK_STATE -> R.string.error_state_invalid_task_state
+        StateFailure.LOCAL_BOOK_NOT_FOUND -> R.string.error_state_local_book_not_found
     }
 
     is ReaderError.Unknown -> R.string.error_unknown

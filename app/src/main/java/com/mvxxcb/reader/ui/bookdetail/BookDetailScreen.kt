@@ -28,7 +28,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -41,10 +40,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.mvxxcb.reader.R
 import com.mvxxcb.reader.di.AppContainer
 import com.mvxxcb.reader.presentation.bookdetail.BookDetailEvent
 import com.mvxxcb.reader.presentation.bookdetail.BookDetailViewModel
@@ -52,6 +53,7 @@ import com.mvxxcb.reader.ui.components.ConfirmDialog
 import com.mvxxcb.reader.ui.components.EmptyState
 import com.mvxxcb.reader.ui.components.ErrorBanner
 import com.mvxxcb.reader.ui.components.LoadingState
+import com.mvxxcb.reader.ui.components.WindowAdaptiveLayout
 import com.mvxxcb.reader.ui.theme.spacing
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -62,6 +64,7 @@ fun BookDetailScreen(
     onBack: () -> Unit,
     onGoCatalog: ((Long) -> Unit)? = null,
     onGoReader: ((Long, Int) -> Unit)? = null,
+    onOpenCrawlCenter: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val viewModel: BookDetailViewModel = viewModel(
@@ -89,7 +92,9 @@ fun BookDetailScreen(
         if (deleted) onBack()
     }
 
-    Scaffold(
+    // WP-INS（07 §6.2）：AdaptiveScaffold 接入——文字内容位于 safeDrawing 安全区内
+    // （封面延伸至状态栏后的背景图为 2.0 WP-L 范围，本页仅做 insets 适配）
+    WindowAdaptiveLayout(
         modifier = modifier,
         topBar = {
             TopAppBar(
@@ -223,6 +228,16 @@ fun BookDetailScreen(
                             ) { Text("查看目录") }
                         }
 
+                        // WP-L（07 §6.2）：下载整本小说入口 + 任务态 + SAF 导出（可选拆分组件）
+                        BookDownloadSection(
+                            container = container,
+                            bookId = bookId,
+                            bookTitle = book.title,
+                            totalChapters = book.totalChapters,
+                            sourceDomain = book.sourceDomain,
+                            onOpenCrawlCenter = { onOpenCrawlCenter?.invoke() },
+                        )
+
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(MaterialTheme.spacing.md)) {
                                 Text("简介", style = MaterialTheme.typography.titleMedium)
@@ -249,7 +264,8 @@ fun BookDetailScreen(
     if (showDeleteConfirm) {
         ConfirmDialog(
             title = "删除确认",
-            text = "删除后章节缓存、阅读进度与书签将一并清除，且不可恢复。",
+            text = "删除后章节缓存、阅读进度与书签将一并清除，且不可恢复。\n" +
+                stringResource(R.string.delete_book_crawl_note),
             confirmText = "删除",
             onConfirm = {
                 showDeleteConfirm = false

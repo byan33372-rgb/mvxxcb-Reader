@@ -28,7 +28,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -39,9 +38,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.mvxxcb.reader.R
 import com.mvxxcb.reader.di.AppContainer
 import com.mvxxcb.reader.domain.model.BackgroundTheme
 import com.mvxxcb.reader.domain.model.BrightnessMode
@@ -52,6 +53,7 @@ import com.mvxxcb.reader.domain.model.ScreenOrientation
 import com.mvxxcb.reader.presentation.settings.ReaderSettingsViewModel
 import com.mvxxcb.reader.reader.theme.ReaderThemes
 import com.mvxxcb.reader.ui.components.LoadingState
+import com.mvxxcb.reader.ui.components.WindowAdaptiveLayout
 import com.mvxxcb.reader.ui.theme.spacing
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,7 +69,8 @@ fun ReaderSettingsScreen(
     val state by viewModel.uiState.collectAsState()
     val settings = state.settings
 
-    Scaffold(
+    // WP-INS（07 §6.2）：AdaptiveScaffold 接入（连续滚动/章间分隔开关属 2.0 WP-CR，本页仅做 insets 适配）
+    WindowAdaptiveLayout(
         modifier = modifier,
         topBar = {
             TopAppBar(
@@ -82,7 +85,7 @@ fun ReaderSettingsScreen(
     ) { padding ->
         if (state.isLoading) {
             LoadingState(modifier = Modifier.padding(padding))
-            return@Scaffold
+            return@WindowAdaptiveLayout
         }
         Column(
             modifier = Modifier
@@ -158,7 +161,7 @@ fun ReaderSettingsScreen(
                     .forEach { theme -> ThemeSwatch(theme, settings, viewModel) }
             }
 
-            // —— 翻页模式 ——
+            // —— 翻页模式 ——（2.0：滚动/仿真/连续三选，与 ReaderSettingsSheet 快捷面板同款逻辑）
             SectionTitle("翻页模式")
             Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.sm)) {
                 FilterChip(
@@ -170,6 +173,11 @@ fun ReaderSettingsScreen(
                     selected = settings.readingMode == ReadingMode.PAGE_SIMULATED,
                     onClick = { viewModel.update { it.copy(readingMode = ReadingMode.PAGE_SIMULATED) } },
                     label = { Text("仿真翻页") },
+                )
+                FilterChip(
+                    selected = settings.readingMode == ReadingMode.CONTINUOUS,
+                    onClick = { viewModel.update { it.copy(readingMode = ReadingMode.CONTINUOUS) } },
+                    label = { Text(stringResource(R.string.mode_continuous)) },
                 )
             }
 

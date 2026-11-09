@@ -75,4 +75,23 @@
     <string name="action_clear_cache">清理缓存</string>
     <string name="action_back">返回</string>
 
+    <!-- 2.0 新增错误文案（契约 v1.1 K14：ReaderError 枚举增量） -->
+    <string name="error_parse_catalog_unresolved">无法从当前章节回溯整本小说，请补充目录页网址后重试</string>
+    <string name="error_storage_txt_write_failed">TXT 文件写入失败，请检查存储空间后重试</string>
+    <string name="error_state_crawl_task_not_found">采集任务不存在或已被清除</string>
+    <string name="error_state_invalid_task_state">当前任务状态不允许此操作</string>
+    <string name="error_state_local_book_not_found">本地书籍文件缺失或已被移动</string>
+
+    <!-- ==================== 2.0 连续阅读（WP-CR，07 §5） ==================== -->
+    <string name="mode_continuous">连续滚动</string>
+    <string name="reader_continuous_loading">正在加载章节…</string>
+    <string name="reader_continuous_loading_next">正在加载下一章…</string>
+    <string name="reader_continuous_chapter_failed">章节加载失败</string>
+    <string name="reader_book_end">全书完</string>
+
+    <!-- ==================== 2.0 采集中心与书架分组（WP-L，07 §6.2） ==================== -->
+    <!-- 删除联动说明（任务书第 5 项）：数据层 FK CASCADE 已保证（crawl_tasks/local_books.bookId → books），
+         文案向用户如实披露删除范围；书架与书详情删除确认共用。 -->
+    <string name="delete_book_crawl_note">删除书籍将同时清除其采集任务与本地 TXT 文件登记</string>
+
 </resources>

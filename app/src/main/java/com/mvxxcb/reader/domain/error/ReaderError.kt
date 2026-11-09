@@ -61,7 +61,17 @@ enum class ParseFailure {
     LOW_CONFIDENCE,                 // 整体置信度低于阈值
     DUPLICATE_CHAPTER_CONFLICT,     // 目录合并冲突超阈值
     TIMEOUT_BUDGET_EXCEEDED,        // 解析任务超时预算耗尽
+    CATALOG_UNRESOLVED,             // BookResolver：无法从章节页回溯详情/目录入口（需用户补充目录 URL）
 }
 
-enum class StorageFailure { DB_ERROR, DISK_IO, DISK_FULL, CACHE_CORRUPT }
-enum class StateFailure { BOOK_NOT_FOUND, CHAPTER_NOT_FOUND, CHAPTER_NOT_CACHED, INVALID_ARGUMENT }
+enum class StorageFailure {
+    DB_ERROR, DISK_IO, DISK_FULL, CACHE_CORRUPT,
+    TXT_WRITE_FAILED,               // 2.0：TXT 导出写盘失败（07 §契约 v1.1 K14）
+}
+
+enum class StateFailure {
+    BOOK_NOT_FOUND, CHAPTER_NOT_FOUND, CHAPTER_NOT_CACHED, INVALID_ARGUMENT,
+    CRAWL_TASK_NOT_FOUND,           // 2.0：采集任务不存在（07 K14）
+    INVALID_TASK_STATE,             // 2.0：采集任务状态机非法转移（07 K14）
+    LOCAL_BOOK_NOT_FOUND,           // 2.0：本地书条目不存在（07 K14）
+}

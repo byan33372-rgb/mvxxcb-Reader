@@ -32,6 +32,7 @@ import androidx.navigation.navArgument
 import com.mvxxcb.reader.di.AppContainer
 import com.mvxxcb.reader.ui.bookdetail.BookDetailScreen
 import com.mvxxcb.reader.ui.catalog.CatalogScreen
+import com.mvxxcb.reader.ui.crawl.CrawlCenterScreen
 import com.mvxxcb.reader.ui.importing.ImportScreen
 import com.mvxxcb.reader.ui.reader.ReaderScreen
 import com.mvxxcb.reader.ui.rules.RuleEditScreen
@@ -126,6 +127,7 @@ fun AppNavHost(
                     container = container,
                     onOpenReaderSettings = { navController.navigate(Routes.READER_SETTINGS) },
                     onOpenRuleManager = { navController.navigate(Routes.RULES) },
+                    onOpenCrawlCenter = { navController.navigate(Routes.CRAWL_CENTER) },
                 )
             }
 
@@ -140,6 +142,7 @@ fun AppNavHost(
                     onBack = { navController.popBackStack() },
                     onGoCatalog = { id -> navController.navigate(Routes.catalog(id)) },
                     onGoReader = { id, chapterIndex -> navController.navigate(Routes.reader(id, chapterIndex)) },
+                    onOpenCrawlCenter = { navController.navigate(Routes.CRAWL_CENTER) },
                 )
             }
 
@@ -195,6 +198,16 @@ fun AppNavHost(
                     container = container,
                     onOpenReaderSettings = { navController.navigate(Routes.READER_SETTINGS) },
                     onOpenRuleManager = { navController.navigate(Routes.RULES) },
+                    onOpenCrawlCenter = { navController.navigate(Routes.CRAWL_CENTER) },
+                )
+            }
+
+            // WP-L（07 §6.2）：采集任务管理（契约 v1.1 K13 路由 crawl）
+            composable(Routes.CRAWL_CENTER) {
+                CrawlCenterScreen(
+                    container = container,
+                    onBack = { navController.popBackStack() },
+                    onOpenBook = { bookId -> navController.navigate(Routes.bookDetail(bookId)) },
                 )
             }
 

@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Rule
@@ -26,7 +27,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -42,22 +42,30 @@ import com.mvxxcb.reader.di.AppContainer
 import com.mvxxcb.reader.domain.model.ThemeMode
 import com.mvxxcb.reader.presentation.settings.AppSettingsViewModel
 import com.mvxxcb.reader.ui.components.LoadingState
-import com.mvxxcb.reader.ui.theme.spacing@OptIn(ExperimentalMaterial3Api::class)
+import com.mvxxcb.reader.ui.components.WindowAdaptiveLayout
+import com.mvxxcb.reader.ui.theme.spacing
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     container: AppContainer,
     onOpenReaderSettings: () -> Unit,
     onOpenRuleManager: () -> Unit,
+    onOpenCrawlCenter: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val viewModel: AppSettingsViewModel = viewModel(factory = AppSettingsViewModel.factory(container))
     val state by viewModel.uiState.collectAsState()
     val isDynamicColorSupported = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
 
-    Scaffold(modifier = modifier, topBar = { TopAppBar(title = { Text("我的") }) }) { padding ->
+    // WP-INS（07 §6.2）：AdaptiveScaffold 接入（"采集中心"入口属 2.0 WP-L，本页仅做 insets 适配）
+    WindowAdaptiveLayout(
+        modifier = modifier,
+        topBar = { TopAppBar(title = { Text("我的") }) },
+    ) { padding ->
         if (state.isLoading) {
             LoadingState(modifier = Modifier.padding(padding))
-            return@Scaffold
+            return@WindowAdaptiveLayout
         }
         val preferences = state.preferences
         Column(
@@ -126,6 +134,10 @@ fun SettingsScreen(
             }
 
             // —— 入口 ——
+            // 2.0 WP-L（07 §6.2）：采集任务管理入口
+            SettingsEntry(icon = Icons.Filled.CloudDownload, title = "采集中心", subtitle = "整本下载任务：进度/暂停/重试/TXT 导出") {
+                onOpenCrawlCenter()
+            }
             SettingsEntry(icon = Icons.AutoMirrored.Filled.MenuBook, title = "阅读设置", subtitle = "字体/主题/翻页模式/亮度") {
                 onOpenReaderSettings()
             }

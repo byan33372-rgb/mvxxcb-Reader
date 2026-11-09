@@ -52,4 +52,9 @@ data class ChapterEntity(
     val fetchedAt: Long? = null,
     // 纯文字字符数
     @ColumnInfo(defaultValue = "0") val wordCount: Int = 0,
+    // 2.0（DB v2，07 §3.1-d）：正文文件化路径，随版建好、默认不启用（contentSource=0 全链路现行为；
+    // 启用开关留待 06 D15 触发阈值批准）；content 列保留兼容双读
+    val contentPath: String? = null,
+    // 0=DB 正文（现行为）/ 1=文件正文；同上默认不启用
+    @ColumnInfo(defaultValue = "0") val contentSource: Int = 0,
 )

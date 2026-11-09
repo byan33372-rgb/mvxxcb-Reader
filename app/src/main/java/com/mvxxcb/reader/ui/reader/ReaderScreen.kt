@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -77,6 +78,10 @@ fun ReaderScreen(
     val state by viewModel.uiState.collectAsState()
     val pagination by viewModel.pagination.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState()
+    // 2.0 连续阅读（07 §5）：窗口流与恢复/跳章目标
+    val chapterWindow by viewModel.chapterWindow.collectAsState()
+    val continuousRestoreTarget by viewModel.continuousRestoreTarget.collectAsState()
+    val continuousJumpTarget by viewModel.continuousJumpTarget.collectAsState()
 
     val theme = ReaderThemes.of(state.settings.backgroundTheme)
     val snackbarHostState = remember { SnackbarHostState() }
@@ -118,7 +123,24 @@ fun ReaderScreen(
             },
     ) {
         // —— 内容区 ——
-        when (val contentState = state.contentState) {
+        // 2.0（07 §5.3）：CONTINUOUS → ReaderContinuousHost（窗口驱动，与单章 contentState 解耦，
+        // 加载/失败以行内占位呈现，网络慢不阻塞已渲染内容）；SCROLL/PAGE_SIMULATED 既有分支零改动。
+        if (state.settings.readingMode == ReadingMode.CONTINUOUS) {
+            ReaderContinuousHost(
+                entries = chapterWindow,
+                settings = state.settings,
+                theme = theme,
+                restoreTarget = continuousRestoreTarget,
+                jumpTarget = continuousJumpTarget,
+                onAnchorChanged = viewModel::onContinuousAnchorChanged,
+                onNearWindowEnd = viewModel::onContinuousNearWindowEnd,
+                onNearWindowStart = viewModel::onContinuousNearWindowStart,
+                onRetryChapter = viewModel::retryContinuousChapter,
+                onRestoreConsumed = viewModel::consumeContinuousRestoreTarget,
+                onJumpConsumed = viewModel::consumeContinuousJumpTarget,
+                onToggleToolbar = viewModel::toggleToolbar,
+            )
+        } else when (val contentState = state.contentState) {
             is ReaderContentState.Loading -> LoadingState(text = "正在加载章节…")
 
             is ReaderContentState.Failed -> Column(
@@ -150,6 +172,9 @@ fun ReaderScreen(
             }
 
             is ReaderContentState.Ready -> when (state.settings.readingMode) {
+                // 2.0：CONTINUOUS 由上方外层分支处理（此处不可达，保持 when 穷尽）
+                ReadingMode.CONTINUOUS -> Unit
+
                 ReadingMode.SCROLL -> ReaderScrollHost(
                     content = contentState.content,
                     settings = state.settings,
@@ -211,7 +236,9 @@ fun ReaderScreen(
         // —— 提示 ——
         SnackbarHost(
             hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding(),
         )
     }
 
@@ -262,6 +289,17 @@ fun ReaderScreen(
             }
         }
         onDispose { }
+    }
+
+    // —— 退出恢复安全区（07 §6.2 新增）：离开阅读器（含返回/切页/Activity 重建）时强制 show(systemBars)，防卡沉浸 ——
+    // 独立于上方 toolbarVisible 驱动的 effect，避免显隐切换时 show→hide 闪烁。
+    DisposableEffect(activity, view) {
+        onDispose {
+            activity?.window?.let { window ->
+                WindowCompat.getInsetsController(window, view)
+                    .show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
     }
 
     // —— ON_STOP 强制保存进度（契约 02 §8.6：Screen 必须调用） ——

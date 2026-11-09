@@ -1,10 +1,14 @@
 package com.mvxxcb.reader.ui.shelf
 
-// WP-U（04 §4）：书架。真实 UiState；空/加载/错误三态；封面 Coil；继续阅读角标；
-// 长按删除确认；本地排序入口（最近阅读/加入时间/书名，仅视图层重排真实数据）。
+// WP-U（04 §4）→ 2.0 WP-L（07 §6.2 / B3）五分组升级：
+// 顶部过滤 chips（全部/在线/下载中/已下载/本地导入，sticky 随内容滚动）；
+// 真实 UiState；空/加载/错误三态；封面 Coil；继续阅读 + 下载态角标；
+// 长按删除确认（含采集任务/TXT 登记级联删除说明文案）；
+// 本地排序入口（最近阅读/加入时间/书名，仅视图层重排真实数据）——既有排序零回归。
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.AccessTime
@@ -30,10 +35,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -46,18 +51,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.mvxxcb.reader.R
 import com.mvxxcb.reader.di.AppContainer
 import com.mvxxcb.reader.domain.model.Book
+import com.mvxxcb.reader.presentation.shelf.ShelfDownloadBadge
+import com.mvxxcb.reader.presentation.shelf.ShelfGroup
 import com.mvxxcb.reader.presentation.shelf.ShelfUiState
 import com.mvxxcb.reader.presentation.shelf.ShelfViewModel
 import com.mvxxcb.reader.ui.components.ConfirmDialog
 import com.mvxxcb.reader.ui.components.EmptyState
 import com.mvxxcb.reader.ui.components.ErrorBanner
 import com.mvxxcb.reader.ui.components.LoadingState
+import com.mvxxcb.reader.ui.components.WindowAdaptiveLayout
+import com.mvxxcb.reader.ui.components.listContentPadding
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -84,9 +95,12 @@ fun ShelfScreen(
 
     var sortExpanded by remember { mutableStateOf(false) }
     var sortOption by remember { mutableStateOf(ShelfSortOption.RECENT) }
+    var selectedGroup by remember { mutableStateOf(ShelfGroup.ALL) }
     var pendingDelete by remember { mutableStateOf<Book?>(null) }
 
-    Scaffold(
+    // WP-INS（07 §6.2）：AdaptiveScaffold 接入——safeDrawing 安全区统一由 WindowAdaptiveLayout 消费；
+    // 列表 contentPadding = scaffoldPadding + 列表间距（禁写死顶高、禁重复 insets）
+    WindowAdaptiveLayout(
         modifier = modifier,
         topBar = {
             TopAppBar(
@@ -122,15 +136,14 @@ fun ShelfScreen(
             )
         },
     ) { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
             when {
-                state.isLoading -> LoadingState(text = "正在加载书架…")
+                state.isLoading -> LoadingState(
+                    text = "正在加载书架…",
+                    modifier = Modifier.padding(padding),
+                )
 
-                state.error != null -> Column {
+                state.error != null -> Column(modifier = Modifier.padding(padding)) {
                     ErrorBanner(
                         error = state.error!!,
                         onRetry = { viewModel.refresh() },
@@ -144,21 +157,45 @@ fun ShelfScreen(
                     icon = Icons.AutoMirrored.Filled.MenuBook,
                     actionText = "去发现·导入",
                     onAction = onGoDiscover,
+                    modifier = Modifier.padding(padding),
                 )
 
                 else -> {
-                    val books = rememberSortedBooks(state.books, sortOption)
+                    val filtered = filterBooksInGroup(state.books, state.downloadBadges, selectedGroup)
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        contentPadding = listContentPadding(
+                            scaffoldPadding = padding,
                             horizontal = MaterialTheme.spacing.screenH,
                             vertical = MaterialTheme.spacing.screenV,
                         ),
                         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.cardGap),
                     ) {
-                        items(books, key = { it.id }) { book ->
+                        // 五分组过滤 chips（sticky：随内容滚动但常驻可见）
+                        stickyHeader(key = "group-chips") {
+                            GroupFilterRow(
+                                selected = selectedGroup,
+                                onSelect = { selectedGroup = it },
+                                modifier = Modifier.padding(vertical = MaterialTheme.spacing.xs),
+                            )
+                        }
+                        if (filtered.isEmpty()) {
+                            item(key = "group-empty") {
+                                Text(
+                                    text = "「${selectedGroup.label}」分组暂无书籍",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = MaterialTheme.spacing.xl),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                )
+                            }
+                        }
+                        items(filtered, key = { it.id }) { book ->
                             ShelfBookCard(
                                 book = book,
+                                badge = state.downloadBadges[book.id],
                                 onClick = { onOpenBook(book.id) },
                                 onLongClick = { pendingDelete = book },
                             )
@@ -172,7 +209,8 @@ fun ShelfScreen(
     pendingDelete?.let { book ->
         ConfirmDialog(
             title = "删除确认",
-            text = "确定要删除《${book.title.ifEmpty { "未命名书籍" }}》吗？章节缓存、阅读进度与书签将一并删除。",
+            text = "确定要删除《${book.title.ifEmpty { "未命名书籍" }}》吗？章节缓存、阅读进度与书签将一并删除。\n" +
+                stringResource(R.string.delete_book_crawl_note),
             confirmText = "删除",
             onConfirm = {
                 viewModel.removeBook(book.id)
@@ -183,22 +221,54 @@ fun ShelfScreen(
     }
 }
 
-@Composable
-private fun rememberSortedBooks(
+/** 按分组过滤（分组判定在 VM 层完成，Screen 只做视图过滤，零回归既有排序） */
+private fun filterBooksInGroup(
     books: List<Book>,
-    option: ShelfSortOption,
-): List<Book> = remember(books, option) {
-    when (option) {
-        ShelfSortOption.RECENT -> books.sortedByDescending { it.lastReadAt ?: it.updatedAt }
-        ShelfSortOption.ADDED -> books.sortedByDescending { it.createdAt }
-        ShelfSortOption.TITLE -> books.sortedBy { it.title.ifEmpty { "~" } }
+    badges: Map<Long, ShelfDownloadBadge?>,
+    group: ShelfGroup,
+): List<Book> = when (group) {
+    ShelfGroup.ALL -> books
+    else -> books.filter { book ->
+        com.mvxxcb.reader.presentation.shelf.ShelfGrouping.groupOf(badges[book.id]) == group
     }
+}
+
+/** 五分组过滤 chips（全部/在线/下载中/已下载/本地导入） */
+@Composable
+private fun GroupFilterRow(
+    selected: ShelfGroup,
+    onSelect: (ShelfGroup) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.sm),
+    ) {
+        ShelfGroup.entries.forEach { group ->
+            FilterChip(
+                selected = selected == group,
+                onClick = { onSelect(group) },
+                label = { Text(group.label) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun badgeLabel(badge: ShelfDownloadBadge): String = when (badge) {
+    ShelfDownloadBadge.DOWNLOADING -> "下载中"
+    ShelfDownloadBadge.DOWNLOADED -> "已下载"
+    ShelfDownloadBadge.PARTIAL -> "部分下载"
+    ShelfDownloadBadge.LOCAL -> "本地"
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ShelfBookCard(
     book: Book,
+    badge: ShelfDownloadBadge?,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
@@ -250,6 +320,25 @@ private fun ShelfBookCard(
                         Spacer(Modifier.width(MaterialTheme.spacing.xs))
                         // 继续阅读角标
                         Badge { Text("继续阅读") }
+                    }
+                    badge?.let {
+                        Spacer(Modifier.width(MaterialTheme.spacing.xs))
+                        // 下载态角标（2.0 WP-L 五分组）
+                        val containerColor = when (it) {
+                            ShelfDownloadBadge.DOWNLOADING -> MaterialTheme.colorScheme.primary
+                            ShelfDownloadBadge.DOWNLOADED -> MaterialTheme.colorScheme.tertiary
+                            ShelfDownloadBadge.PARTIAL -> MaterialTheme.colorScheme.error
+                            ShelfDownloadBadge.LOCAL -> MaterialTheme.colorScheme.secondary
+                        }
+                        val contentColor = when (it) {
+                            ShelfDownloadBadge.DOWNLOADING -> MaterialTheme.colorScheme.onPrimary
+                            ShelfDownloadBadge.DOWNLOADED -> MaterialTheme.colorScheme.onTertiary
+                            ShelfDownloadBadge.PARTIAL -> MaterialTheme.colorScheme.onError
+                            ShelfDownloadBadge.LOCAL -> MaterialTheme.colorScheme.onSecondary
+                        }
+                        Badge(containerColor = containerColor, contentColor = contentColor) {
+                            Text(badgeLabel(it))
+                        }
                     }
                 }
                 Spacer(Modifier.height(4.dp))

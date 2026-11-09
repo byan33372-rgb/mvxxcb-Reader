@@ -41,6 +41,8 @@ class DefaultImportService(
     private val bookRepository: BookRepository,
     private val chapterRepository: ChapterRepository,
     private val logger: AppLogger,
+    // 2.0 整本回溯（契约 v1.1 K8）；可空参数保持 QA 集成测试构造兼容
+    private val bookResolver: com.mvxxcb.reader.domain.resolver.BookResolver? = null,
 ) : ImportService {
 
     override suspend fun classify(rawUrl: String): AppResult<UrlClassification> =
@@ -67,8 +69,47 @@ class DefaultImportService(
             }
         }
 
-        // —— 章节页直达：仅解析正文 → 临时书（02 §6.1 createdTemporary 语义） ——
+        // —— 章节页直达：2.0 先经 BookResolver 整本回溯（成功→完整书导入）；失败→保留一期临时书路径 ——
         if (classification.kind == PageKind.CHAPTER) {
+            val resolver = bookResolver
+            if (resolver != null) {
+                when (val resolution = resolver.resolve(rawUrl)) {
+                    is AppResult.Success -> {
+                        val res = resolution.value
+                        if (!res.requiresCatalogHint && res.detail != null && res.catalog != null) {
+                            // 回溯成功：完整书导入（复用 resolver 已解析的详情/目录，避免重复抓取）
+                            emit(ImportStep.PhaseChanged(ImportPhase.SAVING))
+                            val upsert = when (val result = bookRepository.upsertFromImport(
+                                res.detail, res.normalizedUrl, res.catalog, isTemporary = false,
+                            )) {
+                                is AppResult.Success -> result.value
+                                is AppResult.Failure -> {
+                                    emit(ImportStep.PhaseChanged(ImportPhase.FAILED))
+                                    emit(ImportStep.Finished(
+                                        ImportOutcome.Failure(result.error, classification, res.detail, recoveryFor(result.error))))
+                                    return@flow
+                                }
+                            }
+                            emit(ImportStep.PhaseChanged(ImportPhase.SUCCESS))
+                            emit(ImportStep.Finished(ImportOutcome.Success(
+                                bookId = upsert.bookId,
+                                detail = res.detail,
+                                catalogSize = res.catalog.chapters.size,
+                                confidence = res.confidence,
+                                warnings = res.evidence,
+                                createdTemporary = false,
+                                mergedExisting = upsert.mergedExisting,
+                            )))
+                            return@flow
+                        }
+                        // requiresCatalogHint / 回溯不完整 → 落入下方临时书路径（evidence 由 UI 层经分类信息提示补充目录 URL）
+                    }
+                    is AppResult.Failure -> {
+                        // 回溯失败不终止：保底临时阅读（一期行为）
+                        logger.w(TAG, "BookResolver 回溯失败，转临时书路径 rawUrl=$rawUrl")
+                    }
+                }
+            }
             emit(ImportStep.PhaseChanged(ImportPhase.PARSING_CONTENT))
             val content = when (val outcome =
                 pipeline.parseChapterContent(ParseRequest(classification.normalizedUrl))) {

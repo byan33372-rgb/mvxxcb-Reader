@@ -28,7 +28,6 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
@@ -57,6 +56,8 @@ import com.mvxxcb.reader.ui.components.ConfirmDialog
 import com.mvxxcb.reader.ui.components.EmptyState
 import com.mvxxcb.reader.ui.components.ErrorBanner
 import com.mvxxcb.reader.ui.components.LoadingState
+import com.mvxxcb.reader.ui.components.WindowAdaptiveLayout
+import com.mvxxcb.reader.ui.components.listContentPadding
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -79,7 +80,8 @@ fun RuleManagerScreen(
     var pendingDelete by remember { mutableStateOf<String?>(null) }
     var showImportDialog by remember { mutableStateOf(false) }
 
-    Scaffold(
+    // WP-INS（07 §6.2）：AdaptiveScaffold 接入；FAB/Snackbar 由 Scaffold 统一避让导航栏 insets
+    WindowAdaptiveLayout(
         modifier = modifier,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -106,11 +108,11 @@ fun RuleManagerScreen(
             }
         },
     ) { padding ->
-        Box(modifier = Modifier.padding(padding)) {
+        Box(modifier = Modifier.fillMaxSize()) {
             when {
-                state.isLoading -> LoadingState()
+                state.isLoading -> LoadingState(modifier = Modifier.padding(padding))
 
-                state.error != null -> Column {
+                state.error != null -> Column(modifier = Modifier.padding(padding)) {
                     ErrorBanner(
                         error = state.error!!,
                         onDismiss = { viewModel.consumeError() },
@@ -123,11 +125,13 @@ fun RuleManagerScreen(
                     description = "导入解析失败时，可针对站点新建规则兜底",
                     actionText = "新建规则",
                     onAction = onCreateRule,
+                    modifier = Modifier.padding(padding),
                 )
 
                 else -> LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    contentPadding = listContentPadding(
+                        scaffoldPadding = padding,
                         horizontal = MaterialTheme.spacing.screenH,
                         vertical = MaterialTheme.spacing.screenV,
                     ),

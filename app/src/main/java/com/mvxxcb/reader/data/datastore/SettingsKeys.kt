@@ -25,7 +25,7 @@ object SettingsKeys {
         val BOLD = booleanPreferencesKey("reader.bold")
         val HORIZONTAL_PADDING = intPreferencesKey("reader.horizontalPadding") // 0..48 (dp)
         val BACKGROUND_THEME = stringPreferencesKey("reader.backgroundTheme") // WHITE/CREAM/EYE_CARE_GREEN/DARK_GRAY/BLACK
-        val READING_MODE = stringPreferencesKey("reader.readingMode")         // SCROLL/PAGE_SIMULATED
+        val READING_MODE = stringPreferencesKey("reader.readingMode")         // SCROLL/PAGE_SIMULATED/CONTINUOUS
         val BRIGHTNESS_MODE = stringPreferencesKey("reader.brightnessMode")   // SYSTEM/CUSTOM
         val BRIGHTNESS = floatPreferencesKey("reader.brightness")             // 0..1
         val SCREEN_ORIENTATION = stringPreferencesKey("reader.screenOrientation") // SYSTEM/PORTRAIT/LANDSCAPE
