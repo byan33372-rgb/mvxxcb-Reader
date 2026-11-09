@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title></title>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function () {
+  var root = document.getElementById('app');
+  var runtime = window.__APP_RUNTIME__ || {};
+  var config = { api: '/api/v2/chapter/list', bookId: runtime.bookId, token: runtime.token, render: 'client' };
+  var nodes = [];
+  for (var i = 0; i < 40; i++) {
+    nodes.push({ id: i, type: 'section', text: 'loading', children: ['header', 'list', 'footer'] });
+  }
+  function render(target) {
+    if (!target) return;
+    target.setAttribute('data-rendered', 'client-only');
+    target.innerHTML = nodes.map(function (n) { return '<div class="skeleton"></div>'; }).join('');
+  }
+  fetch(config.api, { credentials: 'include' }).then(function (res) { return res.json(); }).then(render);
+  document.addEventListener('DOMContentLoaded', function () { render(root); });
+})();
+</script>
+</body>
+</html>

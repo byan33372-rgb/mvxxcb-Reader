@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- WP-M 生成（04 §1）：宿主窗口背景（明/暗），与 Theme.JianYue 配套。 -->
+<resources>
+    <color name="window_background_light">#FAFAF7</color>
+    <color name="window_background_dark">#121212</color>
+</resources>

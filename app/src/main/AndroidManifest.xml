@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- WP-M 生成（04 §1）。依赖红线：全部网络请求必须经 security 层 SecureHttpClient（01 §2）。 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:name=".ReaderApplication"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.JianYue"
+        android:usesCleartextTraffic="true"
+        android:enableOnBackInvokedCallback="true">
+
+        <!--
+          安全说明（QA / 安全审计复查项）：
+          usesCleartextTraffic="true" 仅为兼容部分小说站点仅提供 HTTP 页面的现实；
+          实际网络安全由 security 层强制——全部请求必须经 SecureHttpClient
+          （SSRF 校验 / 重定向逐跳复查 / 大小与频率限额），禁止任何绕行网络出口。
+          后续站点策略收紧时可改回 false（按域名白名单放行）。
+        -->
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
