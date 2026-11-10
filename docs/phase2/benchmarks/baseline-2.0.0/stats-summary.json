@@ -1,0 +1,188 @@
+{
+ "context": {
+  "build": {
+   "brand": "google",
+   "device": "emu64xa",
+   "fingerprint": "google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys",
+   "id": "AE3A.240806.043",
+   "model": "sdk_gphone64_x86_64",
+   "type": "userdebug",
+   "version": {
+    "codename": "REL",
+    "sdk": 35
+   }
+  },
+  "cpuCoreCount": 4,
+  "cpuLocked": false,
+  "cpuMaxFreqHz": 2000,
+  "memTotalBytes": 3121209344,
+  "sustainedPerformanceModeEnabled": false,
+  "artMainlineVersion": 350820300,
+  "osCodenameAbbreviated": "A",
+  "compilationMode": "run-from-apk"
+ },
+ "CatalogScrollBenchmark": {
+  "iterations": 5,
+  "metrics": {
+   "frameCount": {
+    "minimum": 102.0,
+    "maximum": 114.0,
+    "median": 108.0,
+    "runs": [
+     108.0,
+     102.0,
+     111.0,
+     104.0,
+     114.0
+    ]
+   },
+   "frameDurationCpuMs": {
+    "totalFrames": 539,
+    "P50": 15.649607,
+    "P90": 31.59472,
+    "P95": 33.515407,
+    "P99": 40.356978,
+    "pctOver16.67ms": 44.9,
+    "pctOverrunPositive": 100.0,
+    "framesPerIteration": [
+     108,
+     102,
+     111,
+     104,
+     114
+    ]
+   },
+   "frameOverrunMs": {
+    "totalFrames": 539,
+    "P50": 0.816069,
+    "P90": 16.682733,
+    "P95": 19.131097,
+    "P99": 34.371604,
+    "pctOver16.67ms": 10.2,
+    "pctOverrunPositive": 57.7,
+    "framesPerIteration": [
+     108,
+     102,
+     111,
+     104,
+     114
+    ]
+   }
+  }
+ },
+ "ReaderScrollBenchmark": {
+  "iterations": 5,
+  "metrics": {
+   "frameCount": {
+    "minimum": 113.0,
+    "maximum": 122.0,
+    "median": 118.0,
+    "runs": [
+     118.0,
+     118.0,
+     122.0,
+     113.0,
+     122.0
+    ]
+   },
+   "frameDurationCpuMs": {
+    "totalFrames": 593,
+    "P50": 14.338873,
+    "P90": 21.825118,
+    "P95": 28.67162,
+    "P99": 32.284839,
+    "pctOver16.67ms": 15.01,
+    "pctOverrunPositive": 100.0,
+    "framesPerIteration": [
+     118,
+     118,
+     122,
+     113,
+     122
+    ]
+   },
+   "frameOverrunMs": {
+    "totalFrames": 593,
+    "P50": -1.182333,
+    "P90": 11.678893,
+    "P95": 13.771364,
+    "P99": 17.137254,
+    "pctOver16.67ms": 1.35,
+    "pctOverrunPositive": 23.78,
+    "framesPerIteration": [
+     118,
+     118,
+     122,
+     113,
+     122
+    ]
+   }
+  }
+ },
+ "ShelfScrollBenchmark": {
+  "iterations": 5,
+  "metrics": {
+   "frameCount": {
+    "minimum": 52.0,
+    "maximum": 58.0,
+    "median": 52.0,
+    "runs": [
+     52.0,
+     58.0,
+     52.0,
+     52.0,
+     55.0
+    ]
+   },
+   "frameDurationCpuMs": {
+    "totalFrames": 269,
+    "P50": 28.039323,
+    "P90": 31.723633,
+    "P95": 32.295552,
+    "P99": 34.03052,
+    "pctOver16.67ms": 56.13,
+    "pctOverrunPositive": 100.0,
+    "framesPerIteration": [
+     52,
+     58,
+     52,
+     52,
+     55
+    ]
+   },
+   "frameOverrunMs": {
+    "totalFrames": 269,
+    "P50": 13.167667,
+    "P90": 16.419117,
+    "P95": 16.908313,
+    "P99": 20.743182,
+    "pctOver16.67ms": 6.69,
+    "pctOverrunPositive": 64.31,
+    "framesPerIteration": [
+     52,
+     58,
+     52,
+     52,
+     55
+    ]
+   }
+  }
+ },
+ "StartupBenchmark": {
+  "iterations": 5,
+  "metrics": {
+   "timeToInitialDisplayMs": {
+    "minimum": 704.480395,
+    "maximum": 828.205736,
+    "median": 755.962894,
+    "runs": [
+     755.962894,
+     704.480395,
+     707.076031,
+     828.205736,
+     758.85957
+    ]
+   }
+  }
+ }
+}

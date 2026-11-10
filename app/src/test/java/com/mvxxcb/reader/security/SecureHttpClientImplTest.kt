@@ -262,6 +262,49 @@ class SecureHttpClientImplTest {
         assertTrue("间隔已过不应真实等待（实际 ${wallMs}ms）", wallMs < 300)
     }
 
+    @Test(timeout = 30_000L)
+    fun `HTTP 429 按 Retry-After 冷却后续请求等待指定时长`() = runBlocking {
+        setUpServer()
+        server.enqueue(MockResponse().setResponseCode(429).setHeader("Retry-After", "1"))
+        server.enqueue(MockResponse().setBody("ok"))
+        // 冻结假时钟 + 小起始间隔：等待量确定化——第一次 429 → Retry-After=1s 冷却，
+        // 第二次请求应真实挂起 ~1000ms（若冷却未生效则仅 ~100ms 基线间隔）
+        val client = newClient(
+            limits = NetworkLimits(minIntervalPerHostMs = 100, connectTimeoutMs = 2000, readTimeoutMs = 2000),
+            timeProvider = FakeTime(),
+        )
+        val first = client.fetch(FetchRequest(url = base("/rate")))
+        val firstError = netFailureOf(first)
+        assertEquals(NetworkFailure.HTTP_ERROR_STATUS, firstError.failure)
+        assertEquals(429, firstError.statusCode)
+        val t0 = System.nanoTime()
+        val second = client.fetch(FetchRequest(url = base("/rate")))
+        val wallMs = (System.nanoTime() - t0) / 1_000_000
+        assertNotNull("期望冷却后重发成功，实际 ${second.errorOrNull()}", second.getOrNull())
+        assertTrue("Retry-After=1s 后才应重发第二次请求（实际 ${wallMs}ms）", wallMs >= 900)
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test(timeout = 30_000L)
+    fun `HTTP 错误态触发失败退避（间隔翻倍）`() = runBlocking {
+        setUpServer()
+        server.enqueue(MockResponse().setResponseCode(404).setBody("not found"))
+        server.enqueue(MockResponse().setBody("ok"))
+        // 冻结假时钟 + 起始间隔 200：404 → onFailure 翻倍至 400，第二次请求真实挂起 400ms
+        // （若退避未生效则仅 200ms 基线间隔，无法达到 350ms 断言线）
+        val client = newClient(
+            limits = NetworkLimits(minIntervalPerHostMs = 200, connectTimeoutMs = 2000, readTimeoutMs = 2000),
+            timeProvider = FakeTime(),
+        )
+        assertEquals(NetworkFailure.HTTP_ERROR_STATUS, netFailureOf(client.fetch(FetchRequest(url = base("/404")))).failure)
+        val t0 = System.nanoTime()
+        val second = client.fetch(FetchRequest(url = base("/ok")))
+        val wallMs = (System.nanoTime() - t0) / 1_000_000
+        assertNotNull("期望退避后重发成功，实际 ${second.errorOrNull()}", second.getOrNull())
+        assertTrue("失败后应按翻倍间隔退避 ≥350ms（实际 ${wallMs}ms）", wallMs >= 350)
+        assertEquals(2, server.requestCount)
+    }
+
     // ———————————————————— 错误路径映射（DoD3：一律 Failure，不抛异常） ————————————————————
 
     @Test(timeout = 30_000L)

@@ -31,6 +31,13 @@ android {
         debug {
             isMinifyEnabled = false
         }
+        // M0 性能基准（WP-Bench）：Macrobenchmark 目标变体——不可调试（Macrobenchmark 硬性要求）、
+        // 不混淆、debug 签名，与 release 行为对齐。
+        create("benchmark") {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
     }
 
     compileOptions {
@@ -112,6 +119,9 @@ dependencies {
     implementation(libs.jsoup)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.coil.compose)
+
+    // M0 性能基准（WP-Bench）：Baseline Profile 运行时安装器（benchmark 变体与后续基线生成必备）
+    implementation(libs.profileinstaller)
 
     // —— debug 专用 ——
     debugImplementation(libs.compose.ui.tooling)

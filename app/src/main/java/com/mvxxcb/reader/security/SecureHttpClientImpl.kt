@@ -13,7 +13,6 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -33,7 +32,6 @@ import java.net.ConnectException
 import java.net.MalformedURLException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 import javax.net.ssl.SSLException
 import kotlin.coroutines.resume
@@ -53,8 +51,10 @@ private class BodyTooLargeException : IOException("response body exceeds size li
  *  - 重定向上限（TOO_MANY_REDIRECTS）与循环检测（REDIRECT_LOOP，基于已访问 URL 集合）；
  *  - 响应体流式读取，超过 `maxBytes` 立即中断连接并报 RESPONSE_TOO_LARGE；
  *  - 连接/读超时按 [NetworkLimits]；OkHttp 异常逐类映射 [NetworkFailure]；
- *  - 同主机最小请求间隔：host+port 维度记录上次请求时间，经注入 [TimeProvider] 计算，
- *    间隔不足则挂起等待（[delay]，可被协程取消打断）；
+ *  - 每主机自适应限速（[AdaptiveRateLimiter]，2.0 WP-S）：同主机请求间隔自起始
+ *    `minIntervalPerHostMs` 自适应——连续成功降档（floor 1s 合规保底）、失败翻倍退避
+ *    （cap 10s）、HTTP 429 按 Retry-After 一次性冷却（无 Retry-After 或超上限时间隔
+ *    顶到 cap）；等待经协程 delay 挂起，可被取消打断；同主机并发请求严格串行；
  *  - 协程取消桥接：挂起等待阶段经 `suspendCancellableCoroutine` + `invokeOnCancellation`
  *    触发 `call.cancel()`；正文读取是阻塞 IO（协程自身无法被调度打断），另设监视协程，
  *    外层 fetch 协程一旦取消立即对当前 [Call] 执行 `call.cancel()` 关闭底层连接，
@@ -89,8 +89,8 @@ class SecureHttpClientImpl(
         .dns(dns)
         .build()
 
-    /** host:port → 上次请求开始时间（epoch ms，来自 TimeProvider）。 */
-    private val lastRequestAt = ConcurrentHashMap<String, Long>()
+    /** 每主机自适应限速器（起始间隔/降档/退避/429 冷却参数见 [NetworkLimits]）。 */
+    private val rateLimiter = AdaptiveRateLimiter(limits, timeProvider)
 
     override suspend fun fetch(request: FetchRequest): AppResult<FetchResult> {
         val startAt = timeProvider.nowMillis()
@@ -156,11 +156,19 @@ class SecureHttpClientImpl(
         var redirects = 0
 
         while (true) {
-            awaitMinInterval(currentHttpUrl.host, currentHttpUrl.port)
+            rateLimiter.acquire(currentHttpUrl.host)
 
             val call = client.newCall(buildRequest(currentHttpUrl, headers))
             currentCall.set(call)
-            val response = execute(call)
+            val response = try {
+                execute(call)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: IOException) {
+                // 建连/响应头阶段传输失败（DNS/连接拒绝/超时/重置）→ 记为站点侧失败退避后重抛
+                rateLimiter.onFailure(currentHttpUrl.host)
+                throw e
+            }
             try {
                 if (response.isRedirect) {
                     val location = response.header("location")
@@ -201,8 +209,16 @@ class SecureHttpClientImpl(
                     continue
                 }
 
-                // 3) 终响应：读取正文（限额/超时/空体判定在 readAndBuild 内）
-                return readAndBuild(response, currentUrl, redirectChain, effectiveMaxBytes, startAt)
+                // 3) 终响应：读取正文（限额/超时/空体判定在 readAndBuild 内）。
+                //    正文阶段逃逸的传输异常（连接重置等）同样记为失败退避后重抛。
+                return try {
+                    readAndBuild(response, currentHttpUrl.host, currentUrl, redirectChain, effectiveMaxBytes, startAt)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: IOException) {
+                    rateLimiter.onFailure(currentHttpUrl.host)
+                    throw e
+                }
             } finally {
                 // 各分支均已显式 close；此处兜底（Response 重复 close 幂等安全）
                 response.close()
@@ -214,6 +230,7 @@ class SecureHttpClientImpl(
 
     private suspend fun readAndBuild(
         response: Response,
+        host: String,
         finalUrl: String,
         redirectChain: List<String>,
         maxBytes: Long,
@@ -223,17 +240,26 @@ class SecureHttpClientImpl(
         val headersElapsedMs = (timeProvider.nowMillis() - startAt).coerceAtLeast(0)
 
         if (code >= 400) {
+            // 限速反馈：429 按 Retry-After 冷却；其余错误态退避（RESPONSE_TOO_LARGE 例外，
+            // 见下——客户端自设上限，非站点限流信号，不改节奏）
+            if (code == 429) {
+                rateLimiter.onRateLimited(host, parseRetryAfter(response.header("Retry-After")))
+            } else {
+                rateLimiter.onFailure(host)
+            }
             response.close()
             return failure(NetworkFailure.HTTP_ERROR_STATUS, finalUrl, code, "HTTP 状态码 $code")
         }
 
         val body = response.body
             ?: return run {
+                rateLimiter.onFailure(host)
                 response.close()
                 failure(NetworkFailure.EMPTY_RESPONSE, finalUrl, code, "无响应体")
             }
 
-        // Content-Length 预检（gzip 透传解压时 OkHttp 报 -1，由流式限额兜底）
+        // Content-Length 预检（gzip 透传解压时 OkHttp 报 -1，由流式限额兜底）。
+        // RESPONSE_TOO_LARGE 属客户端自设上限而非站点限流/故障信号，限速器记中性（不改节奏）。
         val declaredLength = body.contentLength()
         if (declaredLength > maxBytes) {
             response.close()
@@ -244,16 +270,18 @@ class SecureHttpClientImpl(
         val bytes = try {
             readBodyLimited(body.source(), maxBytes)
         } catch (e: SocketTimeoutException) {
+            rateLimiter.onFailure(host)
             return failure(NetworkFailure.READ_TIMEOUT, finalUrl, code, "读取响应体超时", e)
         } catch (e: BodyTooLargeException) {
             return failure(NetworkFailure.RESPONSE_TOO_LARGE, finalUrl, code, "响应体超过上限 $maxBytes，已中断", e)
         } catch (e: IOException) {
-            throw e   // 交给统一异常映射
+            throw e   // 交给统一异常映射（followAndRead 捕获后先记失败退避）
         } finally {
             response.close()
         }
 
         if (bytes.isEmpty()) {
+            rateLimiter.onFailure(host)
             return failure(NetworkFailure.EMPTY_RESPONSE, finalUrl, code, "响应体为空")
         }
 
@@ -264,6 +292,8 @@ class SecureHttpClientImpl(
 
         // elapsed 覆盖到正文读取完成（失败路径用 headersElapsedMs 即可）
         val elapsedMs = (timeProvider.nowMillis() - startAt).coerceAtLeast(headersElapsedMs)
+
+        rateLimiter.onSuccess(host)   // 完整成功响应：累计连续成功 → 触发自适应降档
 
         return AppResult.Success(
             FetchResult(
@@ -298,29 +328,12 @@ class SecureHttpClientImpl(
 
     // ———————————————————— 限流 / 执行 / 请求构造 ————————————————————
 
-    /** 同主机（host+port）最小请求间隔：不足则挂起等待，等待可被协程取消打断。 */
-    private suspend fun awaitMinInterval(host: String, port: Int) {
-        if (limits.minIntervalPerHostMs <= 0) return
-        val key = "$host:$port"
-        while (true) {
-            val now = timeProvider.nowMillis()
-            val existing = lastRequestAt[key]
-            if (existing == null) {
-                if (lastRequestAt.putIfAbsent(key, now) == null) return
-                continue
-            }
-            val wait = limits.minIntervalPerHostMs - (now - existing)
-            if (wait <= 0) {
-                lastRequestAt[key] = now   // 盖戳本次请求起点（并发竞态下窗口略有偏移，best-effort）
-                return
-            }
-            delay(wait)
-            // 等待结束即发起本次请求：以等待后的时刻盖戳。
-            // 不回环重算——注入时钟若不前进（冻结假时钟）会导致 wait 恒为正而死循环。
-            lastRequestAt[key] = timeProvider.nowMillis()
-            return
-        }
-    }
+    /**
+     * Retry-After 头解析（429 冷却）：仅接受正整数秒（RFC 7231 也允许 HTTP-date，
+     * 采集场景不解析日期形态——返回 null 走"间隔顶到 cap"分支，更保守）。
+     */
+    private fun parseRetryAfter(headerValue: String?): Long? =
+        headerValue?.trim()?.toLongOrNull()?.takeIf { it > 0 }
 
     /** 桥接协程取消 → call.cancel()；失败/成功经回调恢复挂起点。 */
     private suspend fun execute(call: Call): Response = suspendCancellableCoroutine { cont ->

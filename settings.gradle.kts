@@ -23,3 +23,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "JianYue"
 include(":app")
+
+// M0 性能基准（WP-Bench）：Macrobenchmark 模块（com.android.test + androidx.benchmark 1.3.4）
+include(":benchmark")
