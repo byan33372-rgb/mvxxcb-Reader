@@ -20,4 +20,6 @@ data class TxtExportReport(
     val completedChapterCount: Int,
     val failedChapterIds: List<Long>,
     val fileSize: Long,
+    // 2.0 二期总指令 §7：TXT 完整性哈希（SHA-256，原子写完成后计算；v1.1.1 增量字段）
+    val fileSha256: String? = null,
 )
