@@ -89,6 +89,8 @@ class TxtExporterImpl(
 
         val file = File(outPath)
         file.parentFile?.let { parent -> if (!parent.exists()) parent.mkdirs() }
+        // 二期总指令 §7：原子写——先写同目录临时文件，校验通过后原子替换，避免中途崩溃留下伪完整文件
+        val tmpFile = File(file.parentFile, file.name + ".tmp")
 
         val timeText = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA)
             .format(Date(timeProvider.nowMillis()))
@@ -99,7 +101,7 @@ class TxtExporterImpl(
         var ambiguousSeparators = 0
         val failedIds = mutableListOf<Long>()
 
-        file.outputStream().bufferedWriter(Charsets.UTF_8).use { writer ->
+        tmpFile.outputStream().bufferedWriter(Charsets.UTF_8).use { writer ->
             fun writeLine(line: String) {
                 writer.write(line)
                 writer.write("\n")
@@ -159,11 +161,11 @@ class TxtExporterImpl(
             writer.flush()
         }
 
-        // ———— 完整性校验：重读文件字节数 / 分隔符行数 / 首行对照 ————
-        var actualBytes = file.length()
+        // ———— 完整性校验：重读临时文件字节数 / 分隔符行数 / 首行对照 ————
+        var actualBytes = tmpFile.length()
         var separatorCount = 0
         var firstLine: String? = null
-        file.inputStream().use { input ->
+        tmpFile.inputStream().use { input ->
             BufferedReader(InputStreamReader(input, Charsets.UTF_8)).useLines { lines ->
                 var first = true
                 lines.forEach { line ->
@@ -181,7 +183,7 @@ class TxtExporterImpl(
             val detail = "TXT 完整性校验失败 bytes=$actualBytes/$expectedBytes " +
                 "separators=$separatorCount/$expectedSeparatorCount headerOk=$headerOk"
             logger.e(TAG, detail)
-            file.delete()
+            tmpFile.delete()
             return AppResult.Failure(
                 ReaderError.Storage(StorageFailure.TXT_WRITE_FAILED, detail),
             )
@@ -189,14 +191,40 @@ class TxtExporterImpl(
         if (imagesSkipped > 0) {
             logger.d(TAG, "TXT 导出跳过图片块 $imagesSkipped 个 bookId=$bookId")
         }
+        // 二期总指令 §7：SHA-256 完整性哈希 + 原子替换（同目录 rename；Windows 下目标已存在需先删）
+        val sha256 = fileSha256Hex(tmpFile)
+        if (file.exists()) file.delete()
+        if (!tmpFile.renameTo(file)) {
+            val detail = "TXT 原子替换失败 tmp=${tmpFile.name}"
+            logger.e(TAG, detail)
+            tmpFile.delete()
+            return AppResult.Failure(
+                ReaderError.Storage(StorageFailure.TXT_WRITE_FAILED, detail),
+            )
+        }
         return AppResult.Success(
             TxtExportReport(
                 chapterCount = metas.size,
                 completedChapterCount = completed,
                 failedChapterIds = failedIds.toList(),
                 fileSize = actualBytes,
+                fileSha256 = sha256,
             ),
         )
+    }
+
+    /** 流式计算文件 SHA-256（不整载内存） */
+    private fun fileSha256Hex(file: File): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 }
 
