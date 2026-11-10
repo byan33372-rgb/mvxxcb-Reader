@@ -72,7 +72,12 @@ class AppContainer(context: Context) {
 
     val dispatchers: DispatcherProvider = DefaultDispatcherProvider()
     val timeProvider: TimeProvider = SystemTimeProvider()
-    val logger: AppLogger = LogcatLogger()
+
+    /** 日志环形缓冲（2.0 WP-DIAG）：LogcatLogger 具体类型以暴露 snapshotRecent 诊断缓冲 */
+    val logBuffer: LogcatLogger = LogcatLogger()
+
+    /** 既有全量引用点不变：logger 仍以 AppLogger 门面暴露 */
+    val logger: AppLogger get() = logBuffer
 
     /** DataStore 等长生命周期协程作用域 */
     private val appScope = CoroutineScope(SupervisorJob() + dispatchers.io)
@@ -232,6 +237,21 @@ class AppContainer(context: Context) {
         val safeName = com.mvxxcb.reader.data.export.TxtFilePaths.sanitizeFileName(title)
             .ifBlank { "book-$bookId" }
         java.io.File(java.io.File(appContext.filesDir, "txt/$bookId"), "$safeName.txt").absolutePath
+    }
+
+    // ———— 诊断反馈（2.0 WP-DIAG）：监察日志缓冲 + 一键反馈文件 ————
+
+    val diagnosticsService: com.mvxxcb.reader.service.DiagnosticsService by lazy {
+        com.mvxxcb.reader.service.DiagnosticsService(
+            appContext = appContext,
+            database = database,
+            readerSettingsRepository = readerSettingsRepository,
+            crawlTaskRepository = crawlTaskRepository,
+            localBookRepository = localBookRepository,
+            logBuffer = logBuffer,
+            timeProvider = timeProvider,
+            logger = logger,
+        )
     }
 
     /** 应用启动对账（07 风险#7）：重启后对齐 WAITING/RUNNING 采集任务与 WorkManager 队列 */

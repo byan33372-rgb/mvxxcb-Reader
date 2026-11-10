@@ -94,4 +94,12 @@
          文案向用户如实披露删除范围；书架与书详情删除确认共用。 -->
     <string name="delete_book_crawl_note">删除书籍将同时清除其采集任务与本地 TXT 文件登记</string>
 
+    <!-- ==================== 2.0 诊断反馈（WP-DIAG） ==================== -->
+    <!-- 隐私口径（05 台账）：反馈文件不含书简介/正文内容；URL query 脱敏为 ?…；文案如实告知用户 -->
+    <string name="settings_feedback_title">反馈数据</string>
+    <string name="settings_feedback_subtitle">一键生成诊断反馈文件：设备/数据库/采集任务/日志（不含书籍内容）</string>
+    <string name="feedback_generating">正在生成反馈数据…</string>
+    <string name="feedback_generated_path">反馈文件已生成：%1$s（保留在 feedback 文件夹，可手动提交）</string>
+    <string name="feedback_share_chooser">提交反馈数据</string>
+
 </resources>

@@ -43,6 +43,17 @@
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
+
+        <!-- 2.0 诊断反馈（WP-DIAG）：feedback/ 目录反馈文件经 FileProvider 分享（不导出、按需授权读） -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.mvxxcb.reader.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>
