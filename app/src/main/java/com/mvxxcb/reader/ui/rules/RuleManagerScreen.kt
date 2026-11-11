@@ -265,6 +265,7 @@ private fun RuleImportDialog(
                         .fillMaxWidth()
                         .height(160.dp),
                     placeholder = { Text("粘贴规则 JSON（数组或单对象）") },
+                    shape = MaterialTheme.shapes.medium,
                     isError = jsonText.isNotBlank() && !valid,
                 )
                 Row {

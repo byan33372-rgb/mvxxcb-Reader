@@ -44,6 +44,8 @@ import com.mvxxcb.reader.presentation.reader.ContinuousRestoreTarget
 import com.mvxxcb.reader.presentation.reader.ReaderItem
 import com.mvxxcb.reader.reader.theme.ReaderTheme
 import com.mvxxcb.reader.ui.components.ErrorText
+import com.mvxxcb.reader.ui.theme.StateTokens
+import com.mvxxcb.reader.ui.theme.spacing
 import kotlinx.coroutines.flow.collectLatest
 
 /** 章尾自动加载触发阈值：倒数 3 项可见（07 §5.2 末章倒数 3 屏语义，按 item 计） */
@@ -216,8 +218,9 @@ private fun ContinuousChapterDivider(
             .padding(horizontal = settings.horizontalPaddingDp.dp)
             .padding(top = 40.dp, bottom = 4.dp),
     ) {
+        // 2.1 视觉：分隔线透明度走 StateTokens.SubtleDivider（0.25），章首分隔更克制
         HorizontalDivider(
-            color = Color(theme.textSecondary).copy(alpha = 0.35f),
+            color = Color(theme.textSecondary).copy(alpha = StateTokens.SubtleDivider),
             thickness = 0.5.dp,
         )
         Text(
@@ -263,7 +266,7 @@ private fun ContinuousChapterFailedItem(
             .fillMaxWidth()
             .clickable(onClick = onToggleToolbar)
             .padding(horizontal = 0.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.xs),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(

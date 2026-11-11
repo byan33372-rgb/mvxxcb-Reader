@@ -3,6 +3,7 @@ package com.mvxxcb.reader.ui.catalog
 // WP-U（04 §4）：目录。正倒序切换/搜索/定位当前章/缓存标记/200 条窗口分页加载；
 // refreshCatalog + requiresReview 人工确认；缺章（isMissing）置灰展示。
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,6 +45,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -60,6 +62,7 @@ import com.mvxxcb.reader.ui.components.WindowAdaptiveLayout
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.mvxxcb.reader.ui.theme.StateTokens
 import com.mvxxcb.reader.ui.theme.spacing
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -135,7 +138,7 @@ fun CatalogScreen(
                     }
                     IconButton(onClick = { viewModel.refreshCatalog() }, enabled = !state.isRefreshing) {
                         if (state.isRefreshing) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                            CircularProgressIndicator(modifier = Modifier.size(MaterialTheme.spacing.iconMd))
                         } else {
                             Icon(Icons.Filled.Refresh, contentDescription = "更新目录")
                         }
@@ -150,7 +153,7 @@ fun CatalogScreen(
                 .padding(padding)
                 .imePadding(),
         ) {
-            // 搜索框
+            // 搜索框（2.1 视觉：medium 圆角与全 App 文本框统一）
             OutlinedTextField(
                 value = state.searchQuery,
                 onValueChange = viewModel::onSearchChange,
@@ -164,6 +167,7 @@ fun CatalogScreen(
                         TextButton(onClick = { viewModel.clearSearch() }) { Text("清除") }
                     }
                 },
+                shape = MaterialTheme.shapes.medium,
                 singleLine = true,
             )
 
@@ -261,13 +265,26 @@ private fun CatalogChapterItem(
     onOpenChapter: (Int) -> Unit,
 ) {
     ListItem(
-        modifier = Modifier.clickable(onClick = { onOpenChapter(chapter.chapterIndex) }),
+        modifier = Modifier
+            // 2.1 视觉：当前章整行高亮（容器色透明度走 StateTokens，配 CheckCircle 图标 + 文字双通道，
+            // 不只用颜色表达关键信息；性能属性零改动 —— 仍为 ListItem + clickable）
+            .then(
+                if (isCurrent) {
+                    Modifier
+                        .clip(MaterialTheme.shapes.small)
+                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = StateTokens.SelectedOverlay))
+                } else {
+                    Modifier
+                },
+            )
+            .clickable(onClick = { onOpenChapter(chapter.chapterIndex) }),
         headlineContent = {
             Text(
                 text = chapter.title.ifEmpty { "（无标题）" },
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = if (isCurrent) FontWeight.SemiBold else null,
-                color = if (chapter.isMissing) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                // 2.1 视觉：缺章用 onSurfaceVariant（≥4.5:1）+「站点已缺失」文字标签表达，弃用 alpha 置灰
+                color = if (chapter.isMissing) MaterialTheme.colorScheme.onSurfaceVariant
                 else MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -279,10 +296,10 @@ private fun CatalogChapterItem(
                     Icon(
                         Icons.Filled.CheckCircle,
                         contentDescription = null,
-                        modifier = Modifier.size(14.dp),
+                        modifier = Modifier.size(MaterialTheme.spacing.iconSm),
                         tint = MaterialTheme.colorScheme.primary,
                     )
-                    Spacer(Modifier.width(4.dp))
+                    Spacer(Modifier.width(MaterialTheme.spacing.xs))
                     Text("当前阅读", style = MaterialTheme.typography.labelMedium)
                 } else if (chapter.isMissing) {
                     Text("站点已缺失", style = MaterialTheme.typography.labelMedium)
@@ -297,7 +314,7 @@ private fun CatalogChapterItem(
                     Icons.Filled.DownloadDone,
                     contentDescription = "已缓存",
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(MaterialTheme.spacing.iconSm),
                 )
             }
         },

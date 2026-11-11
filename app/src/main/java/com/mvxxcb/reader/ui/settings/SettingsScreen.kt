@@ -136,8 +136,13 @@ fun SettingsScreen(
                     }
                     if (isDynamicColorSupported) {
                         HorizontalDivider(modifier = Modifier.padding(vertical = MaterialTheme.spacing.xs))
+                        // 2.1 无障碍：整行可点击切换（触达 ≥48dp），Switch 自身不再单独消费点击
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.update { it.copy(dynamicColor = !preferences.dynamicColor) }
+                                },
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Icon(Icons.Filled.Palette, contentDescription = null)
@@ -152,9 +157,7 @@ fun SettingsScreen(
                             }
                             Switch(
                                 checked = preferences.dynamicColor,
-                                onCheckedChange = { checked ->
-                                    viewModel.update { it.copy(dynamicColor = checked) }
-                                },
+                                onCheckedChange = null,
                             )
                         }
                     }

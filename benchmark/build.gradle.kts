@@ -11,6 +11,8 @@
 plugins {
     id("com.android.test")
     alias(libs.plugins.kotlin.android)
+    // Baseline Profile 生产端（WP-G）：app 消费端经 baselineProfile(project(":benchmark")) 依赖本模块产物
+    alias(libs.plugins.androidx.baselineprofile)
 }
 
 android {

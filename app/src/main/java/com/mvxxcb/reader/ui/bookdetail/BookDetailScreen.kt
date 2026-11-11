@@ -3,6 +3,7 @@ package com.mvxxcb.reader.ui.bookdetail
 // WP-U（04 §4）：书详情。真实 UiState；空/加载/错误三态；封面 Coil；
 // 继续阅读/开始阅读、目录入口、重新解析详情、删除确认、临时书标记。
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AssistChip
@@ -29,6 +31,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -135,6 +139,10 @@ fun BookDetailScreen(
 
                 else -> {
                     val book = state.book!!
+                    // 2.1 视觉（M1）：长简介折叠（>120 字默认收起，仅视图层状态，不动 ViewModel）
+                    var descriptionExpanded by remember(book.id) { mutableStateOf(false) }
+                    val description = book.description?.takeIf { it.isNotBlank() }
+                    val descriptionCollapsible = (description?.length ?: 0) > 120
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -152,16 +160,27 @@ fun BookDetailScreen(
                             )
                         }
                         Row {
+                            // 2.1 视觉：封面统一 small 圆角裁切 + surfaceVariant 占位（与书架一致）
                             Box(
                                 modifier = Modifier
                                     .width(96.dp)
-                                    .aspectRatio(0.72f),
+                                    .aspectRatio(0.72f)
+                                    .clip(MaterialTheme.shapes.small)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                contentAlignment = Alignment.Center,
                             ) {
                                 if (book.coverUrl.isNullOrBlank()) {
-                                    Card(modifier = Modifier.fillMaxSize()) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Text("无封面", style = MaterialTheme.typography.labelMedium)
-                                        }
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.MenuBook,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        Text(
+                                            "无封面",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
                                     }
                                 } else {
                                     AsyncImage(
@@ -180,7 +199,7 @@ fun BookDetailScreen(
                                     maxLines = 3,
                                     overflow = TextOverflow.Ellipsis,
                                 )
-                                Spacer(Modifier.height(4.dp))
+                                Spacer(Modifier.height(MaterialTheme.spacing.xs))
                                 Text(
                                     text = book.author?.takeIf { it.isNotBlank() } ?: "作者未知",
                                     style = MaterialTheme.typography.bodyMedium,
@@ -208,6 +227,7 @@ fun BookDetailScreen(
                             )
                         }
 
+                        // 操作优先级：开始阅读 > 查看目录 > 下载整本（下方 BookDownloadSection）
                         Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.sm)) {
                             Button(
                                 onClick = { viewModel.startReading() },
@@ -241,12 +261,26 @@ fun BookDetailScreen(
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(MaterialTheme.spacing.md)) {
                                 Text("简介", style = MaterialTheme.typography.titleMedium)
-                                Spacer(Modifier.height(4.dp))
+                                Spacer(Modifier.height(MaterialTheme.spacing.xs))
                                 Text(
-                                    text = book.description?.takeIf { it.isNotBlank() } ?: "（未识别简介）",
+                                    text = description ?: "（未识别简介）",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = if (descriptionCollapsible && !descriptionExpanded) {
+                                        4
+                                    } else {
+                                        Int.MAX_VALUE
+                                    },
+                                    overflow = TextOverflow.Ellipsis,
                                 )
+                                if (descriptionCollapsible) {
+                                    TextButton(
+                                        onClick = { descriptionExpanded = !descriptionExpanded },
+                                        modifier = Modifier.padding(top = MaterialTheme.spacing.xs),
+                                    ) {
+                                        Text(if (descriptionExpanded) "收起" else "展开全文")
+                                    }
+                                }
                             }
                         }
 

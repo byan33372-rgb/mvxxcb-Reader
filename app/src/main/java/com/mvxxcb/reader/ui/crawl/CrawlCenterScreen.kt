@@ -9,6 +9,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,7 +22,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
@@ -55,6 +56,7 @@ import com.mvxxcb.reader.ui.components.EmptyState
 import com.mvxxcb.reader.ui.components.ErrorBanner
 import com.mvxxcb.reader.ui.components.LoadingState
 import com.mvxxcb.reader.ui.components.WindowAdaptiveLayout
+import com.mvxxcb.reader.ui.theme.extendedColors
 import com.mvxxcb.reader.ui.theme.spacing
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -147,6 +149,7 @@ fun CrawlCenterScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CrawlTaskCard(
     item: CrawlTaskItem,
@@ -161,13 +164,13 @@ private fun CrawlTaskCard(
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(MaterialTheme.spacing.md)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // 封面占位：书名首字（不加载远端图片，Coil 红线）
+                // 封面占位：书名首字（不加载远端图片，Coil 红线）；2.1 视觉：small 圆角统一
                 Box(
                     modifier = Modifier
                         .size(48.dp)
                         .background(
                             MaterialTheme.colorScheme.surfaceVariant,
-                            RoundedCornerShape(8.dp),
+                            MaterialTheme.shapes.small,
                         ),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -214,7 +217,7 @@ private fun CrawlTaskCard(
                     progress = { if (total > 0) done.toFloat() / total else 0f },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(MaterialTheme.spacing.xs))
                 Text(
                     text = "已推进 $done / $total（成功 ${task.succeededCount} · 失败 ${task.failedCount}）",
                     style = MaterialTheme.typography.bodySmall,
@@ -231,19 +234,19 @@ private fun CrawlTaskCard(
                 )
             }
 
-            // 文件生成态（Q3：COMPLETED 自动生成 TXT）
+            // 文件生成态（Q3：COMPLETED 自动生成 TXT；2.1 视觉：成功态用 success 语义色 token）
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = if (task.txtGenerated) Icons.Filled.CheckCircle else Icons.Filled.Description,
                     contentDescription = null,
-                    modifier = Modifier.size(14.dp),
+                    modifier = Modifier.size(MaterialTheme.spacing.iconSm),
                     tint = if (task.txtGenerated) {
-                        MaterialTheme.colorScheme.primary
+                        MaterialTheme.extendedColors.success
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
                 )
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(MaterialTheme.spacing.xs))
                 Text(
                     text = if (task.txtGenerated) "TXT 已生成" else "TXT 未生成",
                     style = MaterialTheme.typography.labelMedium,
@@ -252,7 +255,8 @@ private fun CrawlTaskCard(
             }
 
             // 操作行：按 K9 状态机出现可用按钮（全部真实接业务：K10 / 仓库终态删除契约）
-            Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.sm)) {
+            // 2.1（M1）：FlowRow —— 按钮最多时（打开/暂停/取消/重试/清除）换行不溢出
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.sm)) {
                 TextButton(onClick = onOpenBook) { Text("打开小说") }
                 if (item.canPause) {
                     OutlinedButton(onClick = onPause) { Text("暂停") }
@@ -295,8 +299,8 @@ private fun StateChip(state: CrawlState) {
     }
     Box(
         modifier = Modifier
-            .background(container, RoundedCornerShape(8.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .background(container, MaterialTheme.shapes.small)
+            .padding(horizontal = MaterialTheme.spacing.sm, vertical = MaterialTheme.spacing.xs),
     ) {
         Text(
             text = stateLabel(state),

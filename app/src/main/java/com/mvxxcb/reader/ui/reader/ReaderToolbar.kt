@@ -46,6 +46,7 @@ import com.mvxxcb.reader.domain.model.Bookmark
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.mvxxcb.reader.ui.theme.ElevationTokens
 import com.mvxxcb.reader.ui.theme.spacing
 
 /** 顶部工具栏 */
@@ -62,13 +63,13 @@ fun ReaderTopBar(
         enter = slideInVertically { -it },
         exit = slideOutVertically { -it },
     ) {
-        Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 4.dp) {
+        Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = ElevationTokens.Level2) {
             // WP-INS（07 §6.2）：工具栏展开（系统栏 show）时顶栏避开状态栏/挖孔；沉浸隐藏时该 padding 自然为 0
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                    .padding(horizontal = MaterialTheme.spacing.xs, vertical = MaterialTheme.spacing.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = onBack) {
@@ -117,7 +118,7 @@ fun ReaderBottomBar(
         enter = slideInVertically { it },
         exit = slideOutVertically { it },
     ) {
-        Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 4.dp) {
+        Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = ElevationTokens.Level2) {
             // WP-INS（07 §6.2）：底栏避开导航栏/手势区（三键导航与手势导航均由 navigationBars insets 覆盖）
             Column(
                 modifier = Modifier
@@ -132,7 +133,7 @@ fun ReaderBottomBar(
                     },
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = MaterialTheme.spacing.md, vertical = 4.dp),
+                    modifier = Modifier.padding(horizontal = MaterialTheme.spacing.md, vertical = MaterialTheme.spacing.xs),
                 )
                 Row(
                     modifier = Modifier
@@ -188,7 +189,7 @@ fun BookmarkSheet(
                 )
                 TextButton(onClick = onAddBookmark) {
                     Icon(Icons.Filled.BookmarkAdd, contentDescription = null)
-                    Spacer(Modifier.size(4.dp))
+                    Spacer(Modifier.size(MaterialTheme.spacing.xs))
                     Text("添加当前位置")
                 }
             }

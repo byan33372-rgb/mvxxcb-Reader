@@ -129,6 +129,7 @@ fun RuleEditScreen(
                 onValueChange = { v -> viewModel.onDraftChange { it.copy(domain = v) } },
                 label = { Text("站点域名 *") },
                 placeholder = { Text("www.example-novel.com") },
+                shape = MaterialTheme.shapes.medium,
                 isError = state.fieldErrors.containsKey("domain"),
                 supportingText = if (state.fieldErrors.containsKey("domain")) {
                     { Text(state.fieldErrors["domain"].orEmpty(), color = MaterialTheme.colorScheme.error) }
@@ -155,6 +156,7 @@ fun RuleEditScreen(
                 },
                 label = { Text("站点编码（可选）") },
                 placeholder = { Text("UTF-8 / GBK / GB18030 / BIG5") },
+                shape = MaterialTheme.shapes.medium,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
                 isError = state.fieldErrors.containsKey("encoding"),
                 supportingText = if (state.fieldErrors.containsKey("encoding")) {
@@ -222,6 +224,7 @@ fun RuleEditScreen(
                 value = draft.cleaningRulesText,
                 onValueChange = { v -> viewModel.onDraftChange { it.copy(cleaningRulesText = v) } },
                 label = { Text("正则列表") },
+                shape = MaterialTheme.shapes.medium,
                 isError = state.fieldErrors.containsKey("cleaningRulesText"),
                 supportingText = if (state.fieldErrors.containsKey("cleaningRulesText")) {
                     { Text(state.fieldErrors["cleaningRulesText"].orEmpty(), color = MaterialTheme.colorScheme.error) }
@@ -310,6 +313,7 @@ private fun SelectorField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
+        shape = MaterialTheme.shapes.medium,
         isError = fieldErrors.containsKey(key),
         supportingText = if (fieldErrors.containsKey(key)) {
             { Text(fieldErrors[key].orEmpty(), color = MaterialTheme.colorScheme.error) }
