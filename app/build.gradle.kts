@@ -1,10 +1,22 @@
-// app 模块构建脚本 —— WP-M 生成（04 §1）
+// app 模块构建脚本 —— WP-M 生成（04 §1）；M5（WP-G）追加 Baseline Profile 消费端接线
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.androidx.baselineprofile)
+}
+
+// M5（WP-G）：Baseline Profile 消费端配置（androidx.baselineprofile 1.3.4）
+// - profile 由 :benchmark 模块的 StartupBaselineProfile 生成，经下方 baselineProfile(project(":benchmark"))
+//   依赖流入本模块；生成任务 :app:generateReleaseBaselineProfile 需连接模拟器/真机，详见
+//   docs/phase2/benchmarks/baseline-profile-setup.md。
+// - automaticGenerationDuringBuild = false：关闭「构建 release 变体时自动触发生成」的默认行为，
+//   避免无设备环境构建 release 失败；生成一律走显式任务，产物提交进仓库后随 release 打包。
+// - 本模块无 productFlavors，profile 默认仅进 release 变体（debug/benchmark 变体不受影响）。
+baselineProfile {
+    automaticGenerationDuringBuild = false
 }
 
 android {
@@ -87,6 +99,10 @@ ksp {
 }
 
 dependencies {
+    // M5（WP-G）：Baseline Profile 生产者（:benchmark 模块的 BaselineProfileRule 测试）。
+    // 该 configuration 仅被 :app:generateReleaseBaselineProfile 任务消费，不参与常规构建。
+    baselineProfile(project(":benchmark"))
+
     // —— Compose（BOM 统一版本） ——
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

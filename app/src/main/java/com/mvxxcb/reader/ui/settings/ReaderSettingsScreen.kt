@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -287,7 +288,8 @@ private fun ThemeSwatch(
     val selected = settings.backgroundTheme == theme
     Box(
         modifier = Modifier
-            .size(44.dp)
+            // 2.1 无障碍：色板触控目标 44dp → 48dp（§4.4 最小触控目标）
+            .size(MaterialTheme.spacing.touchTarget)
             .background(Color(resolved.background), CircleShape)
             .border(
                 width = if (selected) 3.dp else 1.dp,
@@ -326,12 +328,16 @@ private fun SliderSetting(
 
 @Composable
 private fun SwitchRow(title: String, checked: Boolean, onToggle: () -> Unit) {
+    // 2.1 无障碍：整行可点击（触达 ≥48dp），Switch 自身不再单独消费点击
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = MaterialTheme.spacing.touchTarget)
+            .clickable(onClick = onToggle),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-        Switch(checked = checked, onCheckedChange = { onToggle() })
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 

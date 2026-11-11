@@ -4,9 +4,12 @@ package com.mvxxcb.reader.ui.importing
 // 系统分享进入（onSharedText）；ImportPhase 进度；结果预览含空字段如实展示；
 // 低置信度警示；错误 + 恢复按钮（RETRY / EDIT_RULE / READ_AS_TEMPORARY）；mergedExistingBookId 提示。
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -20,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AssistChip
@@ -40,6 +44,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -58,9 +63,10 @@ import com.mvxxcb.reader.ui.components.ErrorBanner
 import com.mvxxcb.reader.ui.components.InlineLoadingBar
 import com.mvxxcb.reader.ui.components.WindowAdaptiveLayout
 import java.net.URI
+import com.mvxxcb.reader.ui.theme.extendedColors
 import com.mvxxcb.reader.ui.theme.spacing
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ImportScreen(
     container: AppContainer,
@@ -92,13 +98,14 @@ fun ImportScreen(
                 .padding(horizontal = MaterialTheme.spacing.screenH, vertical = MaterialTheme.spacing.screenV),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.md),
         ) {
-            // —— 输入区 ——
+            // —— 输入区 ——（2.1 视觉：medium 圆角让主输入框更醒目，全 App 文本框统一）
             OutlinedTextField(
                 value = state.inputText,
                 onValueChange = viewModel::onInputChange,
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("小说网址") },
                 placeholder = { Text("粘贴书籍详情页 / 目录页 / 章节页链接") },
+                shape = MaterialTheme.shapes.medium,
                 singleLine = true,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.sm)) {
@@ -141,7 +148,7 @@ fun ImportScreen(
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(
                         modifier = Modifier.padding(MaterialTheme.spacing.md),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.xs),
                     ) {
                         Text(
                             "网址类型：${kindLabel(classification.kind)}（置信度：${confidenceLabel(classification.confidence)}）",
@@ -165,22 +172,29 @@ fun ImportScreen(
                 }
             }
 
-            // —— 低置信度警示 ——
+            // —— 低置信度警示 ——（2.1 视觉：warning 语义色 token，替代 tertiary 复用）
             if (state.confidenceWarning) {
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.extendedColors.warningContainer,
+                    ),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Row(
                         modifier = Modifier.padding(MaterialTheme.spacing.md),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(Icons.Filled.Warning, contentDescription = null)
+                        Icon(
+                            Icons.Filled.Warning,
+                            contentDescription = null,
+                            tint = MaterialTheme.extendedColors.onWarningContainer,
+                        )
                         Spacer(Modifier.width(MaterialTheme.spacing.sm))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 "识别结果可信度较低，字段可能不完整",
                                 style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.extendedColors.onWarningContainer,
                             )
                             TextButton(onClick = {
                                 val domain = state.classification?.normalizedUrl?.let { hostOf(it) }
@@ -222,7 +236,8 @@ fun ImportScreen(
                     },
                 )
                 val recovery = state.recovery
-                Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.sm)) {
+                // 2.1（M1）：FlowRow —— 恢复按钮多时换行，不再横向溢出
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.sm)) {
                     if (recovery.contains(RecoveryAction.EDIT_RULE)) {
                         OutlinedButton(onClick = {
                             val domain = state.classification?.normalizedUrl?.let { hostOf(it) }
@@ -260,14 +275,28 @@ private fun ResultPreviewCard(detail: ParsedBookDetail, catalogSize: Int?) {
         ) {
             Text("解析结果预览", style = MaterialTheme.typography.titleMedium)
             Row {
+                // 2.1 视觉：无封面占位与书架/详情一致（surfaceVariant 底色 + 书本图标 + small 圆角）
                 Box(
                     modifier = Modifier
                         .width(72.dp)
-                        .aspectRatio(0.72f),
+                        .aspectRatio(0.72f)
+                        .clip(MaterialTheme.shapes.small)
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (detail.coverUrl.isNullOrBlank()) {
-                        Text("无封面", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.MenuBook,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                "无封面",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     } else {
                         AsyncImage(
                             model = detail.coverUrl,

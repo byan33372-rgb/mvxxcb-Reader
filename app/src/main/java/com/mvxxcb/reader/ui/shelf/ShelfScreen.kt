@@ -7,6 +7,7 @@ package com.mvxxcb.reader.ui.shelf
 // 本地排序入口（最近阅读/加入时间/书名，仅视图层重排真实数据）——既有排序零回归。
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -49,6 +50,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -121,7 +123,7 @@ fun ShelfScreen(
                                                 contentDescription = null,
                                                 modifier = Modifier.size(16.dp),
                                             )
-                                            Spacer(Modifier.width(4.dp))
+                                            Spacer(Modifier.width(MaterialTheme.spacing.xs))
                                         }
                                         Text(option.label)
                                     }
@@ -250,6 +252,8 @@ private fun GroupFilterRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            // 2.1 视觉：sticky chips 垫页面底色，滚动书籍卡片从其下方穿越时文字仍可读
+            .background(MaterialTheme.colorScheme.background)
             .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.sm),
     ) {
@@ -286,11 +290,14 @@ private fun ShelfBookCard(
     ) {
         Row(modifier = Modifier.padding(MaterialTheme.spacing.md)) {
             // WP-PERF：封面按容器物理像素解码（64dp 宽 × 0.72 高），不再按原图全尺寸解码；
-            // 容器固定宽高（width+aspectRatio 一次约束），减少一层冗余 aspectRatio 嵌套
+            // 容器固定宽高（width+aspectRatio 一次约束），减少一层冗余 aspectRatio 嵌套。
+            // 2.1 视觉：封面统一 small 圆角裁切 + 无封面时 surfaceVariant 底色占位（书架/导入/详情一致）。
             Box(
                 modifier = Modifier
                     .width(64.dp)
-                    .aspectRatio(0.72f),
+                    .aspectRatio(0.72f)
+                    .clip(MaterialTheme.shapes.small)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
             ) {
                 if (book.coverUrl.isNullOrBlank()) {
                     // 空封面占位（不伪造图片）
@@ -353,7 +360,7 @@ private fun ShelfBookCard(
                         }
                     }
                 }
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(MaterialTheme.spacing.xs))
                 Text(
                     text = book.author?.takeIf { it.isNotBlank() } ?: "作者未知",
                     style = MaterialTheme.typography.bodySmall,
@@ -370,7 +377,7 @@ private fun ShelfBookCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(MaterialTheme.spacing.xs))
                 val progressText = if (book.totalChapters > 0) {
                     "共 ${book.totalChapters} 章"
                 } else {
@@ -385,10 +392,10 @@ private fun ShelfBookCard(
                     Icon(
                         imageVector = if (book.lastReadAt != null) Icons.Filled.AccessTime else Icons.Filled.Today,
                         contentDescription = null,
-                        modifier = Modifier.size(12.dp),
+                        modifier = Modifier.size(MaterialTheme.spacing.iconXs),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.width(4.dp))
+                    Spacer(Modifier.width(MaterialTheme.spacing.xs))
                     Text(
                         text = formatTime(book.lastReadAt ?: book.updatedAt),
                         style = MaterialTheme.typography.labelMedium,

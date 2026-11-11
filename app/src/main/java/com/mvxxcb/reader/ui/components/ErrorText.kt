@@ -8,8 +8,8 @@ package com.mvxxcb.reader.ui.components
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
@@ -17,7 +17,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
@@ -132,7 +131,9 @@ fun ErrorText(
 
 /**
  * 错误横幅：文案 + 可选重试/附加操作/关闭。
+ * 2.1（M1）：操作按钮改 FlowRow 换行 —— 长错误文案 + 多恢复按钮时不再横向溢出屏幕。
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ErrorBanner(
     error: ReaderError,
@@ -142,22 +143,21 @@ fun ErrorBanner(
     secondaryText: String? = null,
     onSecondary: (() -> Unit)? = null,
 ) {
-    Row(
+    FlowRow(
         modifier = modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.medium)
             .background(MaterialTheme.colorScheme.errorContainer)
             .padding(horizontal = MaterialTheme.spacing.md, vertical = MaterialTheme.spacing.sm),
         horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.sm),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.xs),
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = rememberErrorText(error),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onErrorContainer,
-            )
-        }
+        Text(
+            text = rememberErrorText(error),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onErrorContainer,
+            modifier = Modifier.weight(1f),
+        )
         if (secondaryText != null && onSecondary != null) {
             OutlinedButton(onClick = onSecondary) { Text(secondaryText) }
         }
