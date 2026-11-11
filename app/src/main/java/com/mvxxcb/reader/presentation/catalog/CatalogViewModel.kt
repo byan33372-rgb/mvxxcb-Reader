@@ -15,6 +15,7 @@ import com.mvxxcb.reader.domain.repository.BookRepository
 import com.mvxxcb.reader.domain.repository.ChapterRepository
 import com.mvxxcb.reader.domain.repository.ReadingProgressRepository
 import com.mvxxcb.reader.domain.service.ReadingService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -22,8 +23,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class CatalogSort { ASC, DESC }
 
@@ -61,6 +65,9 @@ class CatalogViewModel(
     private val _events = MutableSharedFlow<CatalogEvent>()
     val events: SharedFlow<CatalogEvent> = _events.asSharedFlow()
 
+    /** WP-PERF：搜索词流（防抖后计算结果；输入回显仍即时，仅过滤延后） */
+    private val searchQueryFlow = MutableStateFlow("")
+
     /** 已加载窗口条数（每页 200，01 §8 性能预算） */
     private var windowSize = WINDOW_PAGE_SIZE
 
@@ -71,6 +78,7 @@ class CatalogViewModel(
         observeChapters()
         observeCurrentChapter()
         loadBookTitle()
+        observeSearch()
     }
 
     /** 每页 200 条窗口加载 */
@@ -88,17 +96,18 @@ class CatalogViewModel(
         applyWindow()
     }
 
+    /**
+     * 搜索输入：回显即时（searchQuery 同步更新，输入框不卡顿），标题过滤 300ms 防抖
+     * 且移到 Default 线程计算（万章级目录逐字符过滤不再阻塞主线程）。
+     */
     fun onSearchChange(query: String) {
         val trimmed = query.trim()
-        if (trimmed.isEmpty()) {
-            clearSearch()
-            return
-        }
-        val results = allChapters.filter { it.title.contains(trimmed, ignoreCase = true) }
-        _uiState.update { it.copy(searchQuery = query, searchResults = results) }
+        _uiState.update { it.copy(searchQuery = query) }
+        searchQueryFlow.value = trimmed
     }
 
     fun clearSearch() {
+        searchQueryFlow.value = ""
         _uiState.update { it.copy(searchQuery = "", searchResults = null) }
         windowSize = WINDOW_PAGE_SIZE
         applyWindow()
@@ -171,6 +180,29 @@ class CatalogViewModel(
         }
     }
 
+    /** WP-PERF：300ms 防抖 + Default 线程过滤；防抖窗口内取消上一次未完成计算 */
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    private fun observeSearch() {
+        viewModelScope.launch {
+            searchQueryFlow
+                .debounce(SEARCH_DEBOUNCE_MS)
+                .collectLatest { trimmed ->
+                    if (trimmed.isEmpty()) {
+                        // 输入清空 → 回到窗口列表（与既有 clearSearch 语义一致）
+                        windowSize = WINDOW_PAGE_SIZE
+                        _uiState.update { it.copy(searchResults = null) }
+                        applyWindow()
+                        return@collectLatest
+                    }
+                    val source = allChapters
+                    val results = withContext(Dispatchers.Default) {
+                        source.filter { it.title.contains(trimmed, ignoreCase = true) }
+                    }
+                    _uiState.update { it.copy(searchResults = results) }
+                }
+        }
+    }
+
     /** 依 sort/窗口重建 chapters 列表 */
     private fun applyWindow() {
         val state = _uiState.value
@@ -189,6 +221,9 @@ class CatalogViewModel(
     companion object {
         /** 万章级目录分页窗口（01 §8：每页 200 条） */
         const val WINDOW_PAGE_SIZE = 200
+
+        /** WP-PERF：搜索标题过滤防抖窗口 */
+        const val SEARCH_DEBOUNCE_MS = 300L
 
         /** 手动 DI 创建入口（契约 02 §0.6） */
         fun factory(container: AppContainer, bookId: Long): ViewModelProvider.Factory =

@@ -152,7 +152,7 @@ fun ReaderContinuousHost(
         contentPadding = PaddingValues(vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(settings.paragraphSpacingDp.dp),
     ) {
-        items(items, key = { it.lazyKey() }) { item ->
+        items(items, key = { it.lazyKey() }, contentType = { it.contentType() }) { item ->
             when (item) {
                 is ReaderItem.ChapterDivider -> ContinuousChapterDivider(
                     title = item.title,
@@ -304,4 +304,14 @@ private fun ReaderItem.lazyKey(): String = when (this) {
     is ReaderItem.ChapterLoading -> "c_${chapterIndex}_loading"
     is ReaderItem.ChapterFailed -> "c_${chapterIndex}_failed"
     ReaderItem.BookEnd -> "c_book_end"
+}
+
+/** WP-PERF：异构行 contentType（段落/图片/分隔/占位复用各自组合槽，跨项复用不混淆类型） */
+private fun ReaderItem.contentType(): String = when (this) {
+    is ReaderItem.ChapterDivider -> "chapter-divider"
+    is ReaderItem.Paragraph -> "paragraph"
+    is ReaderItem.Image -> "image"
+    is ReaderItem.ChapterLoading -> "chapter-loading"
+    is ReaderItem.ChapterFailed -> "chapter-failed"
+    ReaderItem.BookEnd -> "book-end"
 }

@@ -22,6 +22,8 @@ android {
         targetSdk = 35
         // benchmark 1.3 起 AndroidBenchmarkRunner 弃用，官方改用 AndroidJUnitRunner
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // 模拟器基准（M0 口径）：软件渲染 + 固定 60Hz，仅同口径相对对比；真机验证需移除本行
+        testInstrumentationRunnerArguments["androidx.benchmark.suppressErrors"] = "EMULATOR"
     }
 
     // 基准模块自身变体：可调试（instrumentation 需要），与目标 app 的 benchmark 变体同名对齐

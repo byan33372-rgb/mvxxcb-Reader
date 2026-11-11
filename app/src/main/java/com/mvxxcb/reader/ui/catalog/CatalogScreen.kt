@@ -198,21 +198,29 @@ fun CatalogScreen(
                 )
 
                 else -> {
+                    // WP-PERF：currentChapterId 上提为局部值，item 作用域不再订阅整个 uiState
+                    // （loadMore 换窗口列表实例时可见行不因无关状态变化整行重执行）
                     val displayList = state.searchResults ?: state.chapters
+                    val currentId = state.currentChapterId
+                    val openChapter = viewModel::openChapter
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        items(displayList.size, key = { displayList[it].id }) { index ->
+                        items(
+                            count = displayList.size,
+                            key = { displayList[it].id },
+                            contentType = { "catalog-chapter" },
+                        ) { index ->
                             val chapter = displayList[index]
                             CatalogChapterItem(
                                 chapter = chapter,
-                                isCurrent = chapter.id == state.currentChapterId,
-                                onClick = { viewModel.openChapter(chapter.chapterIndex) },
+                                isCurrent = chapter.id == currentId,
+                                onOpenChapter = openChapter,
                             )
                         }
                         if (state.searchResults == null && state.chapters.size < state.totalCount) {
-                            item(key = "load_more_hint") {
+                            item(key = "load_more_hint", contentType = "load-more") {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -250,10 +258,10 @@ fun CatalogScreen(
 private fun CatalogChapterItem(
     chapter: ChapterMeta,
     isCurrent: Boolean,
-    onClick: () -> Unit,
+    onOpenChapter: (Int) -> Unit,
 ) {
     ListItem(
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.clickable(onClick = { onOpenChapter(chapter.chapterIndex) }),
         headlineContent = {
             Text(
                 text = chapter.title.ifEmpty { "（无标题）" },

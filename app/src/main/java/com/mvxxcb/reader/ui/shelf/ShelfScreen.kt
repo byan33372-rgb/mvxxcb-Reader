@@ -51,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -161,7 +162,10 @@ fun ShelfScreen(
                 )
 
                 else -> {
-                    val filtered = filterBooksInGroup(state.books, state.downloadBadges, selectedGroup)
+                    // WP-PERF：分组过滤记忆化（books/badges/group 不变则不重算，滚动路径零过滤成本）
+                    val filtered = remember(state.books, state.downloadBadges, selectedGroup) {
+                        filterBooksInGroup(state.books, state.downloadBadges, selectedGroup)
+                    }
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = listContentPadding(
@@ -192,10 +196,13 @@ fun ShelfScreen(
                                 )
                             }
                         }
-                        items(filtered, key = { it.id }) { book ->
+                        // WP-PERF：稳定 key（bookId）+ contentType（同构卡片行复用）+
+                        // 角标读取上提（item 作用域不再订阅整个 uiState，滚动期间不因无关状态变化全卡片重组）
+                        val badges = state.downloadBadges
+                        items(filtered, key = { it.id }, contentType = { "shelf-book" }) { book ->
                             ShelfBookCard(
                                 book = book,
-                                badge = state.downloadBadges[book.id],
+                                badge = badges[book.id],
                                 onClick = { onOpenBook(book.id) },
                                 onLongClick = { pendingDelete = book },
                             )
@@ -278,6 +285,8 @@ private fun ShelfBookCard(
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         Row(modifier = Modifier.padding(MaterialTheme.spacing.md)) {
+            // WP-PERF：封面按容器物理像素解码（64dp 宽 × 0.72 高），不再按原图全尺寸解码；
+            // 容器固定宽高（width+aspectRatio 一次约束），减少一层冗余 aspectRatio 嵌套
             Box(
                 modifier = Modifier
                     .width(64.dp)
@@ -286,9 +295,7 @@ private fun ShelfBookCard(
                 if (book.coverUrl.isNullOrBlank()) {
                     // 空封面占位（不伪造图片）
                     Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .aspectRatio(0.72f),
+                        modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
@@ -298,8 +305,13 @@ private fun ShelfBookCard(
                         )
                     }
                 } else {
+                    val context = LocalContext.current
+                    val density = LocalDensity.current
+                    val coverRequest = remember(book.coverUrl, density) {
+                        buildCoverRequest(context, book.coverUrl, density)
+                    }
                     AsyncImage(
-                        model = book.coverUrl,
+                        model = coverRequest,
                         contentDescription = "封面：${book.title}",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
@@ -392,4 +404,23 @@ private fun ShelfBookCard(
 private fun formatTime(epochMillis: Long): String = remember(epochMillis) {
     val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
     sdf.format(Date(epochMillis))
+}
+
+/**
+ * WP-PERF：封面解码尺寸 = 容器物理像素（宽 64dp × 高 64dp/0.72，Crop 按目标宽高解码）。
+ * 网络地址仍走 Coil 内存/磁盘缓存与请求去重（默认 ImageLoader），仅限制解码尺寸避免
+ * 大图按原尺寸解码进内存（基线夹具封面为空，此项为真实网络书性能修复）。
+ */
+private fun buildCoverRequest(
+    context: android.content.Context,
+    coverUrl: String?,
+    density: androidx.compose.ui.unit.Density,
+): coil.request.ImageRequest {
+    val widthPx = with(density) { 64.dp.roundToPx() }
+    val heightPx = (widthPx / 0.72f).toInt()
+    return coil.request.ImageRequest.Builder(context)
+        .data(coverUrl)
+        .size(widthPx, heightPx)
+        .crossfade(false)
+        .build()
 }
