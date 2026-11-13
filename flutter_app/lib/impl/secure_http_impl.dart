@@ -4,8 +4,11 @@
 ///  - scheme 白名单 + userinfo 拒绝 + DNS 解析后私网/回环/链路本地/保留段校验；
 ///  - 手动逐跳重定向（≤5 跳），每跳重新校验，跨主机丢弃 Cookie/Authorization；
 ///  - 连接 10s / 读 15s 超时，响应体上限 8MB；
-///  - 同主机最小间隔 2s，失败退避翻倍至 8s，连续成功 3 次回落 2s；
+///  - 每主机自适应限速（WP-S 全语义，`impl/rate_limiter.dart`）：
+///    起始 2s → 连续成功 3 次降档 500ms 至地板 1s；失败翻倍至 10s 封顶；
+///    HTTP 429 → Retry-After 一次性冷却（≤10s），否则间隔置 10s；
 ///  - Content-Type/meta charset 探测，UTF-8 优先，GBK/GB18030 经 package:charset；
+///    站点规则可用 `preferredCharset` 提示优先解码（encoding 字段）；
 ///  - 所有失败返回 [AppResult.Failure]（不向调用方抛异常）。
 library;
 
@@ -20,6 +23,7 @@ import 'package:http/http.dart' as http;
 import '../contracts.dart';
 import '../core/app_result.dart';
 import '../core/reader_error.dart';
+import 'rate_limiter.dart';
 import 'url_utils.dart';
 
 /// 生产安全 HTTP 客户端。
@@ -30,15 +34,11 @@ class SecureHttpClientImpl implements SecureHttpClient {
     this.readTimeout = const Duration(seconds: 15),
     this.maxResponseBytes = 8 * 1024 * 1024,
     this.maxRedirects = 5,
-    Duration minHostInterval = const Duration(seconds: 2),
-    Duration maxBackoff = const Duration(seconds: 8),
+    AdaptiveRateLimiter? rateLimiter,
     Future<List<InternetAddress>> Function(String host)? lookupHost,
   })  : _client = client ?? http.Client(),
         _lookupHost = lookupHost ?? _defaultLookup,
-        _rateLimiter = _AdaptiveRateLimiter(
-          minInterval: minHostInterval,
-          maxBackoff: maxBackoff,
-        );
+        _rateLimiter = rateLimiter ?? AdaptiveRateLimiter();
 
   final http.Client _client;
   final Duration connectTimeout;
@@ -46,7 +46,7 @@ class SecureHttpClientImpl implements SecureHttpClient {
   final int maxResponseBytes;
   final int maxRedirects;
   final Future<List<InternetAddress>> Function(String host) _lookupHost;
-  final _AdaptiveRateLimiter _rateLimiter;
+  final AdaptiveRateLimiter _rateLimiter;
 
   static Future<List<InternetAddress>> _defaultLookup(String host) =>
       InternetAddress.lookup(host);
@@ -59,9 +59,14 @@ class SecureHttpClientImpl implements SecureHttpClient {
   Future<AppResult<FetchedPage>> fetch(
     String url, {
     Map<String, String>? headers,
+    String? preferredCharset,
   }) async {
     try {
-      return await _fetchInternal(url, headers ?? const {});
+      return await _fetchInternal(
+        url,
+        headers ?? const {},
+        preferredCharset: preferredCharset,
+      );
     } catch (e) {
       return Failure(_mapUnknownException(e, url));
     }
@@ -72,8 +77,9 @@ class SecureHttpClientImpl implements SecureHttpClient {
 
   Future<AppResult<FetchedPage>> _fetchInternal(
     String url,
-    Map<String, String> extraHeaders,
-  ) async {
+    Map<String, String> extraHeaders, {
+    String? preferredCharset,
+  }) async {
     final first = await _checkUrl(url);
     if (first.error != null) return Failure(first.error!);
 
@@ -167,6 +173,22 @@ class SecureHttpClientImpl implements SecureHttpClient {
         continue;
       }
 
+      if (status == 429) {
+        // 限流：读取 Retry-After → 一次性冷却；否则间隔置 cap（WP-S 全语义）。
+        final retryAfter =
+            parseRetryAfterHeader(response.headers['retry-after']);
+        await _drain(response);
+        _rateLimiter.onRateLimited(host, retryAfter);
+        return Failure(NetworkError(
+          'RATE_LIMITED',
+          url: redactUrl(currentUrl),
+          statusCode: status,
+          debugDetail: retryAfter != null
+              ? '站点限流 429，Retry-After=${retryAfter.inSeconds}s'
+              : '站点限流 429（无有效 Retry-After，退避 ${_rateLimiter.intervalOf(host).inSeconds}s）',
+        ));
+      }
+
       if (status >= 400) {
         await _drain(response);
         _rateLimiter.onFailure(host);
@@ -205,7 +227,11 @@ class SecureHttpClientImpl implements SecureHttpClient {
 
       final contentType = response.headers['content-type'];
       final declaredCharset = _charsetFromContentType(contentType);
-      final decoded = _decodeHtml(bytes, declaredCharset);
+      final decoded = _decodeHtml(
+        bytes,
+        declaredCharset,
+        preferredCharset: preferredCharset,
+      );
       _rateLimiter.onSuccess(host);
 
       return Success(FetchedPage(
@@ -478,7 +504,11 @@ class SecureHttpClientImpl implements SecureHttpClient {
 
   // ---------------- 编码探测 ----------------
 
-  _DecodedHtml _decodeHtml(List<int> bytes, String? contentTypeCharset) {
+  _DecodedHtml _decodeHtml(
+    List<int> bytes,
+    String? contentTypeCharset, {
+    String? preferredCharset,
+  }) {
     // 1) BOM（UTF-8）
     if (bytes.length >= 3 &&
         bytes[0] == 0xEF &&
@@ -489,9 +519,20 @@ class SecureHttpClientImpl implements SecureHttpClient {
     }
 
     final metaCharset = _metaCharset(bytes);
+
+    // 2) 站点规则提示的编码（preferredCharset，来自规则 encoding 字段，
+    //    仅接受白名单编码）优先于传输声明——站点声明常缺失或错误。
+    final preferred = _preferredEncoding(preferredCharset);
+    if (preferred != null) {
+      final decoded = _tryDecode(preferred.encoding, bytes);
+      if (decoded != null) {
+        return _DecodedHtml(decoded, preferred.name);
+      }
+    }
+
     final declared = (contentTypeCharset ?? metaCharset)?.trim();
 
-    // 2) 站点声明的编码（UTF-8 / GBK 系列）
+    // 3) 站点声明的编码（UTF-8 / GBK 系列）
     if (declared != null && declared.isNotEmpty) {
       final encoding = _encodingFor(declared);
       if (encoding != null) {
@@ -502,11 +543,11 @@ class SecureHttpClientImpl implements SecureHttpClient {
       }
     }
 
-    // 3) UTF-8 优先（严格校验）
+    // 4) UTF-8 优先（严格校验）
     final utf8Text = _tryDecode(utf8, bytes);
     if (utf8Text != null) return _DecodedHtml(utf8Text, 'utf-8');
 
-    // 4) GBK / GB18030 兜底
+    // 5) GBK / GB18030 兜底
     for (final name in const ['gb18030', 'gbk']) {
       final encoding = charset_pkg.Charset.getByName(name);
       if (encoding == null) continue;
@@ -514,8 +555,19 @@ class SecureHttpClientImpl implements SecureHttpClient {
       if (decoded != null) return _DecodedHtml(decoded, name);
     }
 
-    // 5) 最终兜底：宽松 UTF-8（保留字符，不失败）
+    // 6) 最终兜底：宽松 UTF-8（保留字符，不失败）
     return _DecodedHtml(utf8.decode(bytes, allowMalformed: true), 'utf-8');
+  }
+
+  /// 规则提示编码 → (名称, Encoding)；仅接受 GBK/GB18030/BIG5 等非 UTF-8 白名单
+  /// （UTF-8 为默认流程无需提示）。
+  ({String name, Encoding encoding})? _preferredEncoding(String? name) {
+    final normalized = name?.trim().toLowerCase().replaceAll('_', '-');
+    if (normalized == null || normalized.isEmpty) return null;
+    if (normalized == 'utf8' || normalized == 'utf-8') return null;
+    final encoding = charset_pkg.Charset.getByName(normalized);
+    if (encoding == null) return null;
+    return (name: normalized, encoding: encoding);
   }
 
   String? _tryDecode(Encoding encoding, List<int> bytes) {
@@ -614,67 +666,4 @@ class _DecodedHtml {
 
   final String html;
   final String? charset;
-}
-
-/// 每主机自适应限速：同主机请求串行，间隔初始 2s；失败翻倍至 8s；
-/// 连续成功 3 次后回落 2s。
-class _AdaptiveRateLimiter {
-  _AdaptiveRateLimiter({
-    required this.minInterval,
-    required this.maxBackoff,
-  });
-
-  final Duration minInterval;
-  final Duration maxBackoff;
-  final Map<String, _HostState> _states = {};
-
-  _HostState _stateFor(String host) =>
-      _states.putIfAbsent(host.toLowerCase(), () => _HostState(minInterval));
-
-  Future<void> acquire(String host) {
-    final state = _stateFor(host);
-    final previous = state.tail;
-    final gate = Completer<void>();
-    state.tail = gate.future;
-    return previous.then((_) async {
-      try {
-        final now = DateTime.now();
-        final nextAllowed = state.lastRequestAt == null
-            ? now
-            : state.lastRequestAt!.add(state.interval);
-        final wait = nextAllowed.difference(now);
-        if (wait > Duration.zero) {
-          await Future<void>.delayed(wait);
-        }
-        state.lastRequestAt = DateTime.now();
-      } finally {
-        gate.complete();
-      }
-    });
-  }
-
-  void onSuccess(String host) {
-    final state = _stateFor(host);
-    state.consecutiveSuccesses++;
-    if (state.consecutiveSuccesses >= 3) {
-      state.consecutiveSuccesses = 0;
-      state.interval = minInterval;
-    }
-  }
-
-  void onFailure(String host) {
-    final state = _stateFor(host);
-    state.consecutiveSuccesses = 0;
-    final doubled = state.interval * 2;
-    state.interval = doubled > maxBackoff ? maxBackoff : doubled;
-  }
-}
-
-class _HostState {
-  _HostState(this.interval);
-
-  Duration interval;
-  int consecutiveSuccesses = 0;
-  DateTime? lastRequestAt;
-  Future<void> tail = Future<void>.value();
 }

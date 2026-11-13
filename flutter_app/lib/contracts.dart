@@ -1,4 +1,5 @@
 import 'core/app_result.dart';
+import 'core/site_rule.dart';
 
 // ============================================================
 // 共享数据模型与服务契约（Flutter 版冻结接口，对齐 Kotlin 版架构）
@@ -398,10 +399,17 @@ class ReaderSettings {
 
 // ---------------- 服务契约（引擎层实现，UI 层消费） ----------------
 
-/// 安全 HTTP 出口（唯一网络通道）：SSRF 校验 + 重定向逐跳复查 + 超时/大小上限 + 同主机间隔
+/// 安全 HTTP 出口（唯一网络通道）：SSRF 校验 + 重定向逐跳复查 + 超时/大小上限 + 每主机自适应限速
 abstract class SecureHttpClient {
   /// 返回解码后的 HTML 文本与最终 URL；失败为 AppResult.Failure
-  Future<AppResult<FetchedPage>> fetch(String url, {Map<String, String>? headers});
+  ///
+  /// [preferredCharset]：站点规则 encoding 提示（如 GBK），优先于传输声明解码；
+  /// 非白名单编码被实现方忽略。可缺省（对齐 Kotlin 版无此参数时的行为）。
+  Future<AppResult<FetchedPage>> fetch(
+    String url, {
+    Map<String, String>? headers,
+    String? preferredCharset,
+  });
 }
 
 class FetchedPage {
@@ -413,7 +421,7 @@ class FetchedPage {
   const FetchedPage({required this.finalUrl, required this.html, this.charset, required this.statusCode});
 }
 
-/// 解析引擎（四层策略：结构化 → 通用智能 → 置信度；规则层 Flutter v1 简化）
+/// 解析引擎（四层策略：规则(层0/2) → 结构化 → 通用智能 → 置信度）
 abstract class ParserEngine {
   Future<AppResult<UrlClassification>> classify(String url);
   Future<AppResult<ParsedBookDetail>> parseDetail(String url);
@@ -479,7 +487,57 @@ abstract class SettingsService {
   Future<void> save(ReaderSettings settings);
 }
 
-/// 应用服务容器（main.dart 装配）
+/// 站点规则服务（source_rules 表读写；规则编辑器消费）。
+///
+/// 对齐 Kotlin 版 SourceRuleRepository + presentation/rules 视图模型：
+///  - 编辑器保存统一走 [saveRuleFromDraft]（草稿 → ruleJson → Schema 校验，
+///    fieldErrors 非空即失败，不落库）；
+///  - ruleId 约定：编辑器创建的规则 = `manual.<domain>`。
+abstract class SiteRuleService {
+  Future<List<StoredSiteRule>> listRules();
+  Future<StoredSiteRule?> getRule(String ruleId);
+  Future<AppResult<StoredSiteRule>> saveRuleFromDraft(
+    RuleDraft draft, {
+    /// 编辑已有规则时传入原 ruleId/版本/创建时间（保留身份与 created_at）
+    String? existingRuleId,
+    int? existingVersion,
+    int? existingCreatedAt,
+  });
+  Future<AppResult<void>> deleteRule(String ruleId);
+  Future<AppResult<void>> setEnabled(String ruleId, bool enabled);
+}
+
+/// 诊断反馈（对齐 Kotlin `service/DiagnosticsService.kt`）。
+///
+/// 文本口径：设备与应用 / 数据库统计 / 采集任务 / 阅读设置 / 最近操作日志 /
+/// 反馈生成时间；所有 URL 一律 [redactUrl] 脱敏（去 query/fragment + 截断）。
+abstract class DiagnosticsService {
+  Future<AppResult<FeedbackReport>> buildFeedback();
+}
+
+/// 诊断反馈产出（UI 层经分享面板导出）。
+class FeedbackReport {
+  final String text;
+  final String suggestedFileName;
+
+  const FeedbackReport({required this.text, required this.suggestedFileName});
+}
+
+/// 后台采集调度（WP-B）：Android 上映射 WorkManager one-off Work；
+/// 其他平台由空实现兜底（前台队列仍是主执行方）。
+///
+/// 双入口防双跑由 DB 租约（crawl_tasks.lease_until）保证——调度器只负责
+/// "尽快触发一次后台执行"，同一 taskId 重复 schedule 必须幂等（keep 语义）。
+abstract class BackgroundCrawlScheduler {
+  /// 请求在后台尽快执行一次任务循环（同一 taskId 幂等）。
+  Future<void> schedule(int taskId);
+
+  /// 撤销后台任务（暂停/取消时调用；正在运行的 worker 由系统停止，
+  /// 租约经 TTL 过期自然释放）。
+  Future<void> cancel(int taskId);
+}
+
+/// 应用服务容器（bootstrap.dart 装配）
 class AppServices {
   final SecureHttpClient http;
   final ParserEngine parser;
@@ -489,6 +547,11 @@ class AppServices {
   final ProgressRepository progress;
   final CrawlService crawl;
   final SettingsService settings;
+  final SiteRuleService rules;
+  final DiagnosticsService diagnostics;
+
+  /// 释放底层资源（后台隔离任务结束时调用；前台进程可不提供）。
+  final Future<void> Function()? dispose;
 
   const AppServices({
     required this.http,
@@ -499,5 +562,8 @@ class AppServices {
     required this.progress,
     required this.crawl,
     required this.settings,
+    required this.rules,
+    required this.diagnostics,
+    this.dispose,
   });
 }

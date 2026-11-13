@@ -94,22 +94,26 @@
 
 ## Flutter 版（简阅·Flutter）
 
-本仓库同时包含基于 **Flutter 3.50** 开发的 Flutter 重写版（`flutter_app/`），与 Kotlin 版共享同一套架构分层与核心功能。**兼容 Flutter ≥3.22（Dart ≥3.4）**：仓库不锁定 `pubspec.lock`，各版本 Flutter 在 `pub get` 时自动解析兼容依赖。
+本仓库同时包含基于 **Flutter 3.50** 开发的 Flutter 重写版（`flutter_app/`），与 Kotlin 版共享同一套架构分层与核心功能。**兼容 Flutter ≥3.38（Dart ≥3.5）**：仓库不锁定 `pubspec.lock`，各版本 Flutter 在 `pub get` 时自动解析兼容依赖。下限由 `workmanager 0.10.x`（后台隔离依赖）决定，已在 `pubspec.yaml` 注释备案。
 
 | 能力 | Kotlin 版 | Flutter 版 |
 |---|---|---|
 | 网址导入（详情/目录/任意章节反向识别整本） | ✅ | ✅ |
-| 四层解析（JSON-LD/OG/meta + 通用智能提取，含置信度） | ✅ | ✅（简化站点规则层） |
+| 四层解析（人工规则 → 结构化 → 通用智能提取，含置信度） | ✅ | ✅ |
+| 站点规则可视化编辑器（按域名自定义解析，fieldErrors 回显） | ✅ | ✅ |
 | 完整目录（分页/去重/排序/分卷） | ✅ | ✅ |
-| 整本采集（断点续传/暂停/恢复/重试） | ✅ | ✅（应用内前台任务） |
+| 整本采集（断点续传/暂停/恢复/重试） | ✅ | ✅ |
+| WorkManager 后台隔离采集（前台服务 + 进度通知） | ✅ | ✅（Android） |
+| 自适应限速（2s→1s 降档 / 失败翻倍 10s 封顶 / 429 Retry-After） | ✅ | ✅ |
+| 站点编码提示（GBK/GB18030/BIG5 优先解码） | ✅ | ✅ |
 | TXT 生成（原子写 + SHA-256）+ 自动进书架 | ✅ | ✅ |
 | 跨章节连续阅读 + 进度精确恢复 | ✅ | ✅ |
 | 五套阅读主题 / 字号 / 行距 | ✅ | ✅ |
+| 诊断反馈（脱敏文本 + 系统分享导出） | ✅ | ✅ |
 | Pixel 全面屏适配 | ✅ | ✅ |
-| 站点规则编辑器 / 诊断反馈 / 自适应限速 / WorkManager 后台 | ✅ | 部分（见已知限制） |
 
 - Flutter 源码：`flutter_app/`（`lib/contracts.dart` 为冻结接口，`lib/impl/` 引擎层，`lib/ui/` 界面层）
-- Flutter APK：`artifacts/简阅-Flutter-1.0.0.apk`（包名 `com.mvxxcb.reader.flutter`，可与 Kotlin 版共存安装）
+- Flutter APK：`artifacts/简阅-Flutter-1.1.0.apk`（包名 `com.mvxxcb.reader.flutter`，可与 Kotlin 版共存安装）
 - Flutter 构建：
 
 ```bash
@@ -122,11 +126,15 @@ flutter build apk --release
 bash scripts/flutter_build_ascii.sh
 ```
 
-### Flutter 版已知限制（v1）
-1. 站点规则可视化编辑未移植（解析走 结构化+通用智能提取 两层，覆盖主流站点）。
-2. 采集为应用内前台任务（暂停/恢复/断点续传均支持），未接 WorkManager 后台隔离。
-3. 诊断反馈、Baseline Profile 未移植。
-4. 限速为固定域名间隔（2s），未含 Kotlin 版的自适应调速。
+### Flutter 版已知限制（v1.1.0）
+
+v1 的四项限制（站点规则编辑器 / WorkManager 后台隔离 / 诊断反馈 / 自适应限速）已在 v1.1.0 全部移植完毕。当前仍存在以下如实声明的能力边界：
+
+1. **iOS 后台采集未接入**：WorkManager 后台隔离仅在 Android 上注册（`BGTaskScheduler` 配置超出范围）；非 Android 平台调度器为空实现，采集仍可正常进行（前台队列执行）。
+2. **后台进度通知为简化版**：前台服务通知为静态文案（"正在下载章节…"），不含 Kotlin 版的逐章进度百分比更新；`flutter_local_notifications`/`permission_handler` 未引入（保持依赖面最小，通知使用 WorkManager 自带渠道创建）。
+3. **规则清洗规则的一期口径**：编辑器仅支持逐行正则（regex）清洗；`selector`/`whitespace` 两类清洗无法用行文本表达，需直接导入规则 JSON（与 Kotlin 版编辑器一致的已知限制）。
+4. **Baseline Profile 为宿主侧补充**：`android/app/src/main/baseline-prof.txt` 仅覆盖 Application/Activity、androidx.startup（WorkManager 初始化路径）与 WorkManager 核心类；Flutter 的 Dart AOT 启动热路径由引擎自带的 baseline profile 覆盖（flutter gradle 插件自动引入 `profileinstaller`），本文件不重复该部分。
+5. **诊断反馈的日志口径**：仅导出应用内环形缓冲的操作摘要（最近 120 行），不含系统 logcat；URL 一律脱敏（去 query/fragment + 截断），TXT 路径只展示文件名。
 
 ---
 

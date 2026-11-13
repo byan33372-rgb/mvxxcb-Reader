@@ -1,14 +1,19 @@
 // 简阅 · 我的（设置）
-// 阅读设置：背景主题/字号/行距即时生效并持久化；采集中心入口；关于（版本 1.0.0 Flutter 版）。
+// 阅读设置：背景主题/字号/行距即时生效并持久化；采集中心/站点规则/诊断反馈入口；
+// 关于（版本 1.1.0 Flutter 版）。
 // ignore_for_file: deprecated_member_use
 
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../contracts.dart';
+import '../core/app_result.dart';
 import '../core/reader_error.dart';
 import 'crawl_center_page.dart';
+import 'rule_manager_page.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -79,6 +84,41 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  void _openRuleManager() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => RuleManagerPage(services: widget.services),
+      ),
+    );
+  }
+
+  /// 生成脱敏诊断文本并调起系统分享（对齐 Kotlin DiagnosticsService 出口）。
+  Future<void> _shareFeedback() async {
+    showAppSnack(context, '正在生成诊断反馈…');
+    final result = await widget.services.diagnostics.buildFeedback();
+    if (!mounted) return;
+    final error = result.errorOrNull;
+    if (error != null) {
+      showErrorSnack(context, error);
+      return;
+    }
+    final report = result.valueOrNull!;
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          text: report.text,
+          subject: '简阅 诊断反馈',
+          title: report.suggestedFileName,
+        ),
+      );
+      if (!mounted) return;
+      showAppSnack(context, '诊断文本已交由系统分享（${Platform.operatingSystem}）');
+    } catch (e) {
+      if (!mounted) return;
+      showAppSnack(context, '分享失败: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final ReaderSettings? settings = _settings;
@@ -108,6 +148,20 @@ class _SettingsPageState extends State<SettingsPage> {
                   title: '采集中心',
                   subtitle: '整本下载任务：进度/暂停/重试/TXT 导出',
                   onTap: _openCrawlCenter,
+                ),
+                const SizedBox(height: AppSpacing.cardGap),
+                _entryCard(
+                  icon: Icons.auto_fix_high_outlined,
+                  title: '站点规则',
+                  subtitle: '按域名自定义解析；修正抓取失败的站点',
+                  onTap: _openRuleManager,
+                ),
+                const SizedBox(height: AppSpacing.cardGap),
+                _entryCard(
+                  icon: Icons.bug_report_outlined,
+                  title: '诊断反馈',
+                  subtitle: '生成脱敏诊断文本并通过系统分享导出',
+                  onTap: _shareFeedback,
                 ),
                 const SizedBox(height: AppSpacing.cardGap),
                 _aboutCard(context),
@@ -309,7 +363,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 children: <Widget>[
                   Text('简阅', style: theme.textTheme.titleMedium),
                   Text(
-                    '版本 1.0.0（Flutter 版）',
+                    '版本 1.1.0（Flutter 版）',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: scheme.onSurfaceVariant,
                     ),

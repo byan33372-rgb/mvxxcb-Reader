@@ -3,6 +3,8 @@
 /// 语义对齐 Kotlin 版：
 ///  - `parser/core/UrlClassifierImpl.kt`（Flutter v1 仅用 URL 形态启发式，不额外抓取）；
 ///  - `parser/structured/*`（JSON-LD → OG → meta → 通用层逐层合并）；
+///  - `parser/rule/*`（站点规则层：manual.* 优先级 4，非人工站点规则 3；
+///    与 Kotlin DetailParseStep 层序语义一致，规则未命中自动回退通用管线）；
 ///  - `parser/generic/GenericSmartExtractor.kt`（目录容器/正文容器评分、导航链接）；
 ///  - `parser/util/CatalogAnchorFilter.kt`（非章节路径排除、书路径段聚类、分卷锚）；
 ///  - `parser/util/PaginationMerger.kt`（目录 ≤5 页 / 正文 ≤10 页、重复率终止）；
@@ -17,6 +19,8 @@ import 'package:html/parser.dart' as html_parser;
 import '../contracts.dart';
 import '../core/app_result.dart';
 import '../core/reader_error.dart';
+import '../core/site_rule.dart';
+import 'rule_engine_impl.dart';
 import 'url_utils.dart';
 
 /// 目录解析结果 + 目录页标题（供 BookResolver 做书名校验）。
@@ -28,9 +32,11 @@ class CatalogParseResult {
 }
 
 class ParserEngineImpl implements ParserEngine {
-  ParserEngineImpl(this._http);
+  ParserEngineImpl(this._http, {RuleEngine? ruleEngine})
+      : _ruleEngine = ruleEngine;
 
   final SecureHttpClient _http;
+  final RuleEngine? _ruleEngine;
 
   // 章节页特征：显式 /read /chapter、x_x.html 编号分页、或"数字父段/数字叶段"（如 /novel/5544/346134.html）。
   // 注意：裸 /novel/5544.html（单数字段 + .html）是详情页，不得被章节正则误吞（验收实测缺陷修复）。
@@ -125,7 +131,9 @@ class ParserEngineImpl implements ParserEngine {
     if (normalized == null) {
       return Failure(NetworkError('INVALID_URL', url: redactUrl(url)));
     }
-    final fetched = await _fetch(normalized);
+    // 规则层先于抓取加载：encoding 提示用于优先解码（GBK 站点实测必要）。
+    final rule = await _ruleFor(normalized);
+    final fetched = await _fetch(normalized, preferredCharset: rule?.encoding);
     final fetchError = fetched.errorOrNull;
     if (fetchError != null) return Failure(fetchError);
     final page = fetched.valueOrNull!;
@@ -137,6 +145,10 @@ class ParserEngineImpl implements ParserEngine {
       _extractJsonLd(document, fields);
       _extractOpenGraph(document, fields);
       _extractMeta(document, fields);
+      // 站点规则层（manual.* 优先级 4；非人工站点规则 3，与 JSON-LD 同级先到先得）
+      if (rule != null) {
+        _extractRuleDetail(document, page.finalUrl, rule, fields);
+      }
       _extractGenericDetail(document, page.finalUrl, fields);
 
       final title = fields['title']?.value.trim();
@@ -183,12 +195,21 @@ class ParserEngineImpl implements ParserEngine {
     if (normalized == null) {
       return Failure(NetworkError('INVALID_URL', url: redactUrl(url)));
     }
-    final firstFetch = await _fetch(normalized);
+    final rule = await _ruleFor(normalized);
+    final firstFetch = await _fetch(normalized, preferredCharset: rule?.encoding);
     final fetchError = firstFetch.errorOrNull;
     if (fetchError != null) return Failure(fetchError);
     final firstPage = firstFetch.valueOrNull!;
 
     try {
+      // —— 站点规则路径：chapterLinkSelector 命中且有效章节 ≥2 时直接采用；
+      //    否则回退通用管线（规则未命中不放弃通用解析）——
+      if (rule != null &&
+          rule.selectors[RuleSelectorKey.chapterLink] != null) {
+        final ruled = await _parseCatalogRuled(firstPage, rule);
+        if (ruled != null) return Success(ruled);
+      }
+
       final baseHost = hostOf(firstPage.finalUrl);
       if (baseHost == null) {
         return Failure(ParseError('UNSUPPORTED_STRUCTURE', '目录页 URL 无主机'));
@@ -266,18 +287,127 @@ class ParserEngineImpl implements ParserEngine {
     }
   }
 
+  /// 站点规则目录解析：catalogSelector 容器（可选）+ chapterLinkSelector 锚点
+  /// + catalogNextPageSelector 翻页（缺省回退通用"下一页"探测）。
+  ///
+  /// 对齐 Kotlin RuleEngineImpl 目录口径：
+  ///  - 锚点**不做章节形态正则要求**（规则即意图，见 [RuleEngine.extractCatalogAnchors]）；
+  ///  - 翻页终止：重复率 >0.6 / 跨主机 / 上限 5 页（truncatedByLimit）；
+  ///  - 倒序判定阈值 0.6（规则模式显式提供链接，置信度高于通用层的 0.8）。
+  ///
+  /// 返回 null = 规则未命中有效目录（≥2 章），调用方回退通用管线。
+  Future<CatalogParseResult?> _parseCatalogRuled(
+    FetchedPage firstPage,
+    ParsedSiteRule rule,
+  ) async {
+    final engine = _ruleEngine;
+    if (engine == null) return null;
+
+    final firstDocument = html_parser.parse(firstPage.html);
+    final pageTitle = _documentTitle(firstDocument);
+
+    final gathered = <RuleAnchor>[];
+    final visitedPages = <String>{firstPage.finalUrl};
+    var currentPage = firstPage;
+    var currentDocument = firstDocument;
+    var pagesFetched = 1;
+    var truncatedByLimit = false;
+
+    var anchors =
+        engine.extractCatalogAnchors(currentDocument, currentPage.finalUrl, rule);
+    if (anchors.isEmpty) return null;
+    gathered.addAll(anchors);
+    final seenUrls = anchors.map((a) => a.url).toSet();
+
+    while (true) {
+      var nextPage = engine.extractCatalogNextPage(
+        currentDocument,
+        currentPage.finalUrl,
+        rule,
+      );
+      nextPage ??= _detectNextPageLink(currentDocument, currentPage.finalUrl);
+      if (nextPage == null) break;
+      if (pagesFetched >= 5) {
+        truncatedByLimit = true;
+        break;
+      }
+      if (!visitedPages.add(nextPage)) break;
+      if (hostOf(nextPage) != hostOf(firstPage.finalUrl)) break;
+
+      final pageResult = await _fetch(nextPage, preferredCharset: rule.encoding);
+      final pageError = pageResult.errorOrNull;
+      if (pageError != null) break;
+      final fetched = pageResult.valueOrNull!;
+      final document = html_parser.parse(fetched.html);
+
+      anchors = engine.extractCatalogAnchors(document, fetched.finalUrl, rule);
+      if (anchors.isEmpty) break;
+
+      final duplicate = anchors.where((a) => seenUrls.contains(a.url)).length;
+      if (anchors.isNotEmpty && duplicate / anchors.length > 0.6) break;
+
+      for (final anchor in anchors) {
+        if (seenUrls.add(anchor.url)) gathered.add(anchor);
+      }
+      pagesFetched++;
+      currentPage = fetched;
+      currentDocument = document;
+    }
+
+    if (gathered.length < 2) return null;
+
+    // 规则模式不做书路径聚类/分卷切分（容器已由规则限定，链接即章节）；
+    // 分卷标题支持保留给通用层。
+    final chapters = <ChapterRef>[];
+    final usedUrls = <String>{};
+    for (final anchor in gathered) {
+      if (!usedUrls.add(anchor.url)) continue;
+      chapters.add(ChapterRef(
+        order: chapters.length,
+        title: anchor.title,
+        url: anchor.url,
+      ));
+    }
+    if (chapters.length < 2) return null;
+
+    final titles = chapters.map((c) => c.title).toList();
+    final reversed = descendingRatio(titles) >= 0.6;
+    final confidence = chapters.length >= 20
+        ? Confidence.high
+        : (chapters.length >= 5 ? Confidence.medium : Confidence.low);
+
+    return CatalogParseResult(
+      pageTitle: pageTitle,
+      catalog: ParsedCatalog(
+        sourceUrl: firstPage.finalUrl,
+        chapters: chapters,
+        isLikelyReversed: reversed,
+        truncatedByLimit: truncatedByLimit,
+        confidence: confidence,
+      ),
+    );
+  }
+
   @override
   Future<AppResult<ParsedChapterContent>> parseChapterContent(String url) async {
     final normalized = normalizeUrl(url);
     if (normalized == null) {
       return Failure(NetworkError('INVALID_URL', url: redactUrl(url)));
     }
-    final firstFetch = await _fetch(normalized);
+    final rule = await _ruleFor(normalized);
+    final firstFetch = await _fetch(normalized, preferredCharset: rule?.encoding);
     final fetchError = firstFetch.errorOrNull;
     if (fetchError != null) return Failure(fetchError);
     final firstPage = firstFetch.valueOrNull!;
 
     try {
+      // —— 站点规则路径：contentSelector 命中且产出正文时直接采用；
+      //    否则回退通用管线 ——
+      if (rule != null && rule.selectors[RuleSelectorKey.content] != null) {
+        final ruled = await _parseChapterContentRuled(firstPage, rule);
+        if (ruled != null) return Success(ruled);
+      }
+
       final firstDocument = html_parser.parse(firstPage.html);
       final container = _findContentContainer(firstDocument);
       if (container == null) {
@@ -391,12 +521,133 @@ class ParserEngineImpl implements ParserEngine {
     }
   }
 
+  /// 站点规则正文解析：contentSelector 容器 + 清洗规则（DOM 层 selector 删除、
+  /// 文本层 regex/whitespace）+ chapterTitle/上下章/下一页选择器。
+  ///
+  /// 分页对齐通用管线语义：重复率 >0.6 终止、跨主机/跨目录前缀终止、
+  /// 页数上限 = contentMaxPages（缺省 10，与 Kotlin PaginationMerger 一致）；
+  /// 规则未提供 next 页选择器时回退通用"下一页"探测。
+  ///
+  /// 返回 null = 规则未产出正文（容器无命中/正文为空），调用方回退通用管线。
+  Future<ParsedChapterContent?> _parseChapterContentRuled(
+    FetchedPage firstPage,
+    ParsedSiteRule rule,
+  ) async {
+    final engine = _ruleEngine;
+    if (engine == null) return null;
+
+    final firstDocument = html_parser.parse(firstPage.html);
+    final first = engine.extractContent(firstDocument, firstPage.finalUrl, rule);
+    if (first == null) return null;
+
+    final maxPages = rule.contentMaxPages ?? 10;
+    final blocks = <ContentBlock>[
+      ...applyTextCleaning(
+        _collectBlocks(first.container, firstPage.finalUrl),
+        rule.cleaningRules,
+      ),
+    ];
+    if (blocks.isEmpty) return null;
+
+    final title = first.title ?? _extractChapterTitle(firstDocument);
+    final paragraphTexts = blocks
+        .whereType<Paragraph>()
+        .map((p) => p.text)
+        .where((t) => t.isNotEmpty)
+        .toSet();
+
+    var pagesFetched = 1;
+    var truncated = false;
+    var remainingNextPage = first.nextPageUrl;
+    final visitedPages = <String>{firstPage.finalUrl};
+
+    var nextPage = first.nextPageUrl ??
+        _detectNextPageLink(firstDocument, firstPage.finalUrl);
+    while (nextPage != null) {
+      if (pagesFetched >= maxPages) {
+        truncated = true;
+        break;
+      }
+      if (!visitedPages.add(nextPage)) break;
+      if (hostOf(nextPage) != hostOf(firstPage.finalUrl)) break;
+      if (directoryPrefix(nextPage) != directoryPrefix(firstPage.finalUrl)) {
+        break;
+      }
+
+      final pageResult = await _fetch(nextPage, preferredCharset: rule.encoding);
+      final pageError = pageResult.errorOrNull;
+      if (pageError != null) break;
+      final fetched = pageResult.valueOrNull!;
+      final document = html_parser.parse(fetched.html);
+      final extracted = engine.extractContent(document, fetched.finalUrl, rule);
+      if (extracted == null) break;
+
+      // 标题一致性：规则标题存在且与页标题不一致 → 误入下一章，终止分页。
+      if (title != null &&
+          title.trim().isNotEmpty &&
+          extracted.title != null &&
+          extracted.title!.trim().isNotEmpty &&
+          normalizePageTitle(title) != normalizePageTitle(extracted.title!)) {
+        break;
+      }
+
+      final pageBlocks = applyTextCleaning(
+        _collectBlocks(extracted.container, fetched.finalUrl),
+        rule.cleaningRules,
+      );
+      if (pageBlocks.isEmpty) break;
+
+      final newParagraphs = pageBlocks
+          .whereType<Paragraph>()
+          .map((p) => p.text)
+          .where((t) => t.isNotEmpty)
+          .toList();
+      if (newParagraphs.isNotEmpty) {
+        final duplicate = newParagraphs.where(paragraphTexts.contains).length;
+        if (duplicate / newParagraphs.length > 0.6) break;
+      }
+
+      blocks.addAll(pageBlocks);
+      paragraphTexts.addAll(newParagraphs);
+      pagesFetched++;
+      nextPage = extracted.nextPageUrl ??
+          _detectNextPageLink(document, fetched.finalUrl);
+      remainingNextPage = nextPage;
+    }
+
+    final wordCount = blocks
+        .whereType<Paragraph>()
+        .fold<int>(0, (sum, p) => sum + p.text.length);
+    if (wordCount == 0) return null;
+
+    return ParsedChapterContent(
+      sourceUrl: firstPage.finalUrl,
+      title: title,
+      blocks: blocks,
+      nextPageUrl: truncated ? remainingNextPage : null,
+      nextChapterUrl: first.nextChapterUrl,
+      previousChapterUrl: first.previousChapterUrl,
+      isTruncated: truncated,
+      wordCount: wordCount,
+    );
+  }
+
   // ============================================================
-  // 抓取
+  // 抓取（带规则 encoding 提示）
   // ============================================================
 
-  Future<AppResult<FetchedPage>> _fetch(String url) {
-    return _http.fetch(url);
+  /// 按页面域名加载启用中的站点规则（无引擎/无规则/规则损坏 → null）。
+  Future<ParsedSiteRule?> _ruleFor(String pageUrl) async {
+    final engine = _ruleEngine;
+    if (engine == null) return null;
+    return engine.loadRule(hostOf(pageUrl));
+  }
+
+  Future<AppResult<FetchedPage>> _fetch(
+    String url, {
+    String? preferredCharset,
+  }) {
+    return _http.fetch(url, preferredCharset: preferredCharset);
   }
 
   // ============================================================
@@ -507,6 +758,25 @@ class ParserEngineImpl implements ParserEngine {
     if (existing == null || priority > existing.priority) {
       fields[key] = _Field(trimmed, priority);
     }
+  }
+
+  /// 站点规则详情字段（对齐 Kotlin DetailParseStep 层序语义的优先级表达）：
+  /// manual.* 规则 = 4（用户意图最高）；非人工站点规则 = 3（与 JSON-LD 同级，
+  /// 结构化层先写入故同级不覆盖，即“冲突取先到”）。
+  void _extractRuleDetail(
+    dom.Document document,
+    String pageUrl,
+    ParsedSiteRule rule,
+    Map<String, _Field> fields,
+  ) {
+    final engine = _ruleEngine;
+    if (engine == null) return;
+    final extract = engine.extractDetail(document, pageUrl, rule);
+    final priority = rule.isManual ? 4 : 3;
+    _putField(fields, 'title', extract.title, priority);
+    _putField(fields, 'author', extract.author, priority);
+    _putField(fields, 'cover', extract.cover, priority);
+    _putField(fields, 'description', extract.description, priority);
   }
 
   String? _pickCatalogLink(dom.Document document, String pageUrl) {

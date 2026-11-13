@@ -1,12 +1,15 @@
 /// 整本采集服务与阅读设置。
 ///
 /// 对齐 Kotlin 版 `data/work/ChapterDownloadWorker.kt` 与 `TxtExporterImpl.kt`：
-///  - downloadWholeBook：同书非终态任务幂等复用 → 建任务 → 异步串行循环；
-///  - 循环逐章 parseChapterContent + saveContent 即时持久化，每章前检查 pause/cancel；
-///  - 章节间 2s 间隔由 SecureHttpClient 的同主机限速保证；
+///  - downloadWholeBook：同书非终态任务幂等复用 → 建任务 → 入队；
+///  - 执行内核抽至 `crawl_task_runner.dart`（前台队列与后台 WorkManager 隔离
+///    共用；双入口以 DB 租约互斥，同一任务同时只有一个执行方）；
+///  - [downloadWholeBook]/[resume]/[retryFailed]/[restoreOnStartup] 在 Android
+///    上追加调度后台 Work（App 退到后台/被杀后采集不中断，WP-B）；
+///  - [pause]/[cancel] 撤销后台 Work 并释放租约；
+///  - 章节间节奏由 SecureHttpClient 的每主机自适应限速保证；
 ///  - 完成/失败后自动 exportTxt（原子写 tmp+rename + SHA-256）；
 ///  - 失败章清单写入 TXT 文件尾；存在失败章时任务 FAILED，不记录 TXT 成功路径；
-///  - restoreOnStartup：WAITING/RUNNING 任务重新入队；
 ///  - SettingsService：shared_preferences 持久化字号/行高/主题/边距。
 library;
 
@@ -20,8 +23,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../contracts.dart';
+import '../core/app_log.dart';
 import '../core/app_result.dart';
 import '../core/reader_error.dart';
+import 'crawl_task_runner.dart';
 import 'data_impl.dart';
 import 'txt_format.dart';
 import 'url_utils.dart';
@@ -32,19 +37,33 @@ class CrawlServiceImpl implements CrawlService {
     required ChapterRepository chapters,
     required CrawlTaskStore tasks,
     required ParserEngine parser,
+    BackgroundCrawlScheduler? background,
     Future<Directory> Function()? documentsDirectory,
   })  : _books = books,
         _chapters = chapters,
         _tasks = tasks,
         _parser = parser,
+        _background = background,
         _documentsDirectory =
-            documentsDirectory ?? getApplicationDocumentsDirectory;
+            documentsDirectory ?? getApplicationDocumentsDirectory {
+    // 前台队列与后台隔离共用执行内核；TXT 导出复用本实例实现。
+    _runner = CrawlTaskRunner(
+      books: _books,
+      chapters: _chapters,
+      tasks: _tasks,
+      parser: _parser,
+      exportTxt: (bookId) => exportTxt(bookId),
+    );
+  }
 
   final BookRepository _books;
   final ChapterRepository _chapters;
   final CrawlTaskStore _tasks;
   final ParserEngine _parser;
+  final BackgroundCrawlScheduler? _background;
   final Future<Directory> Function() _documentsDirectory;
+
+  late final CrawlTaskRunner _runner;
 
   Future<void> _queue = Future<void>.value();
   final Set<int> _enqueued = <int>{};
@@ -90,6 +109,7 @@ class CrawlServiceImpl implements CrawlService {
 
       final task = await _tasks.createTask(bookId, metas.length);
       _enqueue(task.id);
+      await _scheduleBackground(task.id);
       return Success(task);
     } catch (e) {
       return Failure(StorageError('DB_ERROR', '创建采集任务失败: $e'));
@@ -104,6 +124,8 @@ class CrawlServiceImpl implements CrawlService {
     }
     if (task.state == CrawlState.running || task.state == CrawlState.waiting) {
       await _tasks.updateState(taskId, CrawlState.paused);
+      await _cancelBackground(taskId);
+      AppLog.i('Crawl', 'paused task=$taskId');
     }
     return const Success<void>(null);
   }
@@ -119,6 +141,8 @@ class CrawlServiceImpl implements CrawlService {
         task.state == CrawlState.waiting) {
       await _tasks.updateState(taskId, CrawlState.running);
       _enqueue(taskId);
+      await _scheduleBackground(taskId);
+      AppLog.i('Crawl', 'resumed task=$taskId');
     }
     return const Success<void>(null);
   }
@@ -132,6 +156,8 @@ class CrawlServiceImpl implements CrawlService {
     if (task.state != CrawlState.completed &&
         task.state != CrawlState.cancelled) {
       await _tasks.updateState(taskId, CrawlState.cancelled);
+      await _cancelBackground(taskId);
+      AppLog.i('Crawl', 'cancelled task=$taskId');
     }
     return const Success<void>(null);
   }
@@ -146,6 +172,7 @@ class CrawlServiceImpl implements CrawlService {
     final cached = metas.where((m) => m.isCached).length;
     await _tasks.resetForRetry(taskId, cached);
     _enqueue(taskId);
+    await _scheduleBackground(taskId);
     return const Success<void>(null);
   }
 
@@ -174,6 +201,8 @@ class CrawlServiceImpl implements CrawlService {
             await _tasks.updateState(task.id, CrawlState.waiting);
           }
           _enqueue(task.id);
+          // WP-B：应用重启后重新挂后台 Work（keep 幂等，进行中的 Work 不受影响）。
+          await _scheduleBackground(task.id);
         }
       }
     } catch (_) {
@@ -182,7 +211,29 @@ class CrawlServiceImpl implements CrawlService {
   }
 
   // ============================================================
-  // 串行采集循环
+  // 后台调度（WP-B）
+  // ============================================================
+
+  /// Android 上追加挂一次后台 Work；其他平台/未初始化为 no-op。
+  /// 前台队列仍会立即执行——DB 租约保证双入口不双跑。
+  Future<void> _scheduleBackground(int taskId) async {
+    try {
+      await _background?.schedule(taskId);
+    } catch (_) {
+      // 调度失败不影响前台采集
+    }
+  }
+
+  Future<void> _cancelBackground(int taskId) async {
+    try {
+      await _background?.cancel(taskId);
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  // ============================================================
+  // 串行采集循环（执行内核见 crawl_task_runner.dart）
   // ============================================================
 
   void _enqueue(int taskId) {
@@ -212,77 +263,9 @@ class CrawlServiceImpl implements CrawlService {
   }
 
   Future<void> _runTask(int taskId) async {
-    var task = await _tasks.getTask(taskId);
-    if (task == null) return;
-    if (task.state == CrawlState.waiting) {
-      await _tasks.updateState(taskId, CrawlState.running);
-      task = task.copyWith(state: CrawlState.running);
-    }
-    if (task.state != CrawlState.running) return;
-
-    final book = await _books.getBook(task.bookId);
-    if (book == null) {
-      await _tasks.updateState(taskId, CrawlState.failed);
-      return;
-    }
-
-    final metas = await _chapters.observeChapterMetas(book.id).first;
-    if (metas.isEmpty) {
-      await _tasks.updateState(taskId, CrawlState.failed);
-      return;
-    }
-
-    var succeeded = metas.where((m) => m.isCached).length;
-    var failed = 0;
-    final pending = metas
-        .where((m) => !m.isCached && !m.isMissing)
-        .toList(growable: false);
-
-    for (final meta in pending) {
-      final latest = await _tasks.getTask(taskId);
-      if (latest == null || latest.state != CrawlState.running) return;
-
-      await _tasks.updateProgress(
-        taskId,
-        succeeded: succeeded,
-        failed: failed,
-        currentIndex: meta.chapterIndex,
-        currentTitle: meta.title,
-      );
-
-      final parsed = await _parser.parseChapterContent(meta.url);
-      if (parsed is Success<ParsedChapterContent>) {
-        final saved = await _chapters.saveContent(meta.id, parsed.value);
-        if (saved.isSuccess) {
-          succeeded++;
-        } else {
-          failed++;
-        }
-      } else {
-        failed++;
-      }
-
-      await _tasks.updateProgress(
-        taskId,
-        succeeded: succeeded,
-        failed: failed,
-        currentIndex: meta.chapterIndex,
-        currentTitle: meta.title,
-      );
-    }
-
-    final latest = await _tasks.getTask(taskId);
-    if (latest == null || latest.state != CrawlState.running) return;
-
-    final exported = await exportTxt(book.id);
-    final report = exported.valueOrNull;
-    if (report != null && report.isComplete) {
-      await _tasks.markTxtGenerated(taskId, report.filePath);
-      await _tasks.updateState(taskId, CrawlState.completed);
-    } else {
-      // 有失败章：TXT 文件尾含失败清单，但任务不标记 TXT 成功。
-      await _tasks.updateState(taskId, CrawlState.failed);
-    }
+    // 执行内核（租约抢占/逐章循环/TXT 导出/终态落库）与后台隔离共用；
+    // 暂停/取消由状态表驱动（循环每章前检查）。
+    await _runner.runTask(taskId);
   }
 
   // ============================================================

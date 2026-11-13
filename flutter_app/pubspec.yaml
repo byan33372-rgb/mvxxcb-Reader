@@ -1,10 +1,12 @@
 name: jianyue_flutter
 description: "简阅·Flutter：Android 原生小说阅读器 Flutter 重写版"
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.1.0+2
 
 environment:
-  sdk: ">=3.4.0 <4.0.0"
+  # workmanager 0.10.x 要求 Dart >=3.5.0 / Flutter >=3.38.0（后台隔离），
+  # 其余依赖（share_plus 12.x 等）要求更低，故有效下限由此决定。
+  sdk: ">=3.5.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -17,6 +19,11 @@ dependencies:
   path: ^1.9.0
   crypto: ^3.0.5
   shared_preferences: ^2.3.2
+  # 后台采集隔离（WP-B）：Android 端零额外配置，前台服务+进度通知对齐
+  # Kotlin 版 ChapterDownloadWorker；iOS 一期未接（docs 已知限制）。
+  workmanager: ^0.10.10
+  # 诊断反馈分享（WP-D）：系统分享面板导出反馈文本。
+  share_plus: ^12.0.2
 
 dev_dependencies:
   flutter_test:

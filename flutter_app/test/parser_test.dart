@@ -15,6 +15,7 @@ class _FakeHttp implements SecureHttpClient {
   Future<AppResult<FetchedPage>> fetch(
     String url, {
     Map<String, String>? headers,
+    String? preferredCharset,
   }) async {
     calls++;
     final error = errors[url];

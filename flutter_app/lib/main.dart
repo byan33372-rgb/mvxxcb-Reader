@@ -1,50 +1,25 @@
 import 'package:flutter/material.dart';
 
 import 'app.dart';
-import 'contracts.dart';
-import 'impl/crawl_impl.dart';
-import 'impl/data_impl.dart';
-import 'impl/parser_impl.dart';
-import 'impl/resolver_impl.dart';
-import 'impl/secure_http_impl.dart';
+import 'bootstrap.dart';
+import 'impl/background_impl.dart';
 
 /// 简阅·Flutter 装配入口（主 Agent 维护）：
-/// 顺序对齐 Kotlin 版 AppContainer：security/http → parser → resolver → DB → repos → 采集 → 设置。
+/// 装配顺序对齐 Kotlin 版 AppContainer（security/http → parser(规则引擎) →
+/// resolver → DB → repos → 采集 → 设置 → 规则 → 诊断），统一在
+/// `bootstrap.buildAppServices` 完成；前台与后台隔离共用同一装配入口。
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final http = SecureHttpClientImpl();
-  final parser = ParserEngineImpl(http);
-  final resolver = BookResolverImpl(http, parser);
+  // WP-B：后台采集隔离（Android WorkManager；初始化失败自动退化为仅前台）。
+  final background = WorkmanagerCrawlScheduler();
+  await background.ensureInitialized();
 
-  final database = await AppDatabase.open();
-  final events = DataEvents();
-  final books = BookRepositoryImpl(database, events);
-  final chapters = ChapterRepositoryImpl(database, events);
-  final progress = ProgressRepositoryImpl(database, events);
-  final taskStore = CrawlTaskStore(database, events);
+  final bundle = await buildAppServices(background: background);
 
-  final crawl = CrawlServiceImpl(
-    books: books,
-    chapters: chapters,
-    tasks: taskStore,
-    parser: parser,
-  );
-  final settings = SettingsServiceImpl();
+  // 进程重启后恢复未完成采集任务（对齐 Kotlin 版 reconcileOnAppStart，
+  // 并重新挂后台 Work）
+  await bundle.services.crawl.restoreOnStartup();
 
-  final services = AppServices(
-    http: http,
-    parser: parser,
-    resolver: resolver,
-    books: books,
-    chapters: chapters,
-    progress: progress,
-    crawl: crawl,
-    settings: settings,
-  );
-
-  // 进程重启后恢复未完成采集任务（对齐 Kotlin 版 reconcileOnAppStart）
-  await crawl.restoreOnStartup();
-
-  runApp(JianYueApp(services: services));
+  runApp(JianYueApp(services: bundle.services));
 }
