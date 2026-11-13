@@ -94,7 +94,7 @@
 
 ## Flutter 版（简阅·Flutter）
 
-本仓库同时包含基于 **Flutter 3.50** 的 Flutter 重写版（`flutter_app/`），与 Kotlin 版共享同一套架构分层与核心功能：
+本仓库同时包含基于 **Flutter 3.50** 开发的 Flutter 重写版（`flutter_app/`），与 Kotlin 版共享同一套架构分层与核心功能。**兼容 Flutter ≥3.22（Dart ≥3.4）**：仓库不锁定 `pubspec.lock`，各版本 Flutter 在 `pub get` 时自动解析兼容依赖。
 
 | 能力 | Kotlin 版 | Flutter 版 |
 |---|---|---|

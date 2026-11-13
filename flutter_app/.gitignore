@@ -32,6 +32,8 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+# 不提交锁文件：让不同 Flutter 版本各自解析兼容依赖（保持版本门槛宽容）
+pubspec.lock
 
 # Symbolication related
 app.*.symbols
