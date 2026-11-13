@@ -2,13 +2,13 @@
 # 简阅·Flutter APK 构建脚本（可移植版）
 #
 # 设计目标：仓库不假设任何机器路径，换机后按标准环境即可构建。
-#   1) 源码位置由脚本自身位置推导（仓库可克隆到任意目录）；
+#   1) 源码位置由脚本自身位置推导（本分支 Flutter 工程即仓库根目录）；
 #   2) Flutter / JDK / Android SDK 一律取自环境变量与 PATH，可在
 #      scripts/local-env.sh（已 gitignore）中做机器级覆盖；
 #   3) 仅当源码路径含非 ASCII 字符（且为 Windows 环境）时才启用
 #      「ASCII 镜像构建」——规避 Flutter AOT 在非 ASCII 路径下读不了
 #      app.dill 的已知问题；源码路径本来就是 ASCII 时直接原地构建；
-#   4) 产物版本号自动取自 flutter_app/pubspec.yaml，不再在脚本里写死。
+#   4) 产物版本号自动取自 pubspec.yaml，不再在脚本里写死。
 #
 # 用法：bash scripts/flutter_build_ascii.sh [--debug]
 #
@@ -22,7 +22,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-SRC="$REPO_ROOT/flutter_app"
+SRC="$REPO_ROOT"
 
 # 机器级个性化配置（不入库；模板见 local-env.example.sh）
 if [ -f "$SCRIPT_DIR/local-env.sh" ]; then
