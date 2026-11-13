@@ -78,6 +78,7 @@ flutter test
 | `lib/core/` | 规则模型、错误体系、环形日志 |
 | `test/` | 单元测试 |
 | `android/app/src/main/baseline-prof.txt` | 宿主侧 Baseline Profile 补充 |
+| `docs/` | 产品设计与历史文档（跨分支保留） |
 
 ## APK
 
