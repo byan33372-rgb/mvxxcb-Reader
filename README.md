@@ -92,6 +92,44 @@
 
 ---
 
+## Flutter 版（简阅·Flutter）
+
+本仓库同时包含基于 **Flutter 3.50** 的 Flutter 重写版（`flutter_app/`），与 Kotlin 版共享同一套架构分层与核心功能：
+
+| 能力 | Kotlin 版 | Flutter 版 |
+|---|---|---|
+| 网址导入（详情/目录/任意章节反向识别整本） | ✅ | ✅ |
+| 四层解析（JSON-LD/OG/meta + 通用智能提取，含置信度） | ✅ | ✅（简化站点规则层） |
+| 完整目录（分页/去重/排序/分卷） | ✅ | ✅ |
+| 整本采集（断点续传/暂停/恢复/重试） | ✅ | ✅（应用内前台任务） |
+| TXT 生成（原子写 + SHA-256）+ 自动进书架 | ✅ | ✅ |
+| 跨章节连续阅读 + 进度精确恢复 | ✅ | ✅ |
+| 五套阅读主题 / 字号 / 行距 | ✅ | ✅ |
+| Pixel 全面屏适配 | ✅ | ✅ |
+| 站点规则编辑器 / 诊断反馈 / 自适应限速 / WorkManager 后台 | ✅ | 部分（见已知限制） |
+
+- Flutter 源码：`flutter_app/`（`lib/contracts.dart` 为冻结接口，`lib/impl/` 引擎层，`lib/ui/` 界面层）
+- Flutter APK：`artifacts/简阅-Flutter-1.0.0.apk`（包名 `com.mvxxcb.reader.flutter`，可与 Kotlin 版共存安装）
+- Flutter 构建：
+
+```bash
+cd flutter_app
+flutter pub get
+flutter build apk --release
+# 产物：flutter_app/build/app/outputs/flutter-apk/app-release.apk
+
+# Windows 中文路径下（Flutter AOT 不兼容非 ASCII 路径）使用镜像构建脚本：
+bash scripts/flutter_build_ascii.sh
+```
+
+### Flutter 版已知限制（v1）
+1. 站点规则可视化编辑未移植（解析走 结构化+通用智能提取 两层，覆盖主流站点）。
+2. 采集为应用内前台任务（暂停/恢复/断点续传均支持），未接 WorkManager 后台隔离。
+3. 诊断反馈、Baseline Profile 未移植。
+4. 限速为固定域名间隔（2s），未含 Kotlin 版的自适应调速。
+
+---
+
 ## 许可证
 
 [MIT](LICENSE)
