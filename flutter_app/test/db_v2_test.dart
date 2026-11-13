@@ -1,6 +1,9 @@
 // DB v2 测试：source_rules 存取 + 采集任务租约（双入口防双跑核心语义）。
 // 使用 sqflite_common_ffi 内存库（dev 依赖，已在 pubspec dev_dependencies）。
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:jianyue_flutter/contracts.dart';
@@ -17,6 +20,46 @@ Future<int> _insertBook(AppDatabase database) async {
     'created_at': 0,
     'updated_at': 0,
   });
+}
+
+/// v1 表结构（与 1.0.0 发布版一致：无 source_rules、crawl_tasks 无 lease_until）。
+Future<void> _createV1Schema(Database db, int version) async {
+  await db.execute('''
+    CREATE TABLE books (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      author TEXT,
+      cover_url TEXT,
+      description TEXT,
+      source_url TEXT NOT NULL,
+      source_domain TEXT NOT NULL,
+      catalog_url TEXT,
+      latest_chapter_title TEXT,
+      total_chapters INTEGER NOT NULL DEFAULT 0,
+      current_chapter_id INTEGER,
+      last_read_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  ''');
+  await db.execute('''
+    CREATE TABLE crawl_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      book_id INTEGER NOT NULL,
+      state TEXT NOT NULL,
+      total_chapters INTEGER NOT NULL DEFAULT 0,
+      succeeded INTEGER NOT NULL DEFAULT 0,
+      failed INTEGER NOT NULL DEFAULT 0,
+      current_index INTEGER NOT NULL DEFAULT 0,
+      current_title TEXT,
+      txt_path TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  ''');
+  await db.execute(
+    'CREATE INDEX idx_crawl_tasks_book ON crawl_tasks(book_id, state)',
+  );
 }
 
 void main() {
@@ -161,6 +204,75 @@ void main() {
       // 续租后 1500+1000=2500 前不可抢占
       expect(await store.tryAcquireLease(task.id, 2000, ttl: ttl), isFalse);
       expect(await store.tryAcquireLease(task.id, 2600, ttl: ttl), isTrue);
+    });
+  });
+
+  group('DB v1 → v2 迁移（1.0.0 → 1.1.0 升级路径）', () {
+    late String path;
+
+    setUp(() async {
+      path = p.join(
+        Directory.systemTemp.path,
+        'jianyue_migration_${DateTime.now().microsecondsSinceEpoch}.db',
+      );
+    });
+
+    tearDown(() async {
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+    });
+
+    test('保留旧数据、新增 source_rules 与 lease_until', () async {
+      // 1) 建立 v1 库并写入一条旧数据
+      final legacy = await databaseFactory.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 1,
+          onCreate: _createV1Schema,
+        ),
+      );
+      await legacy.insert('books', {
+        'title': '旧书',
+        'source_url': 'https://www.example.com/book/9.html',
+        'source_domain': 'www.example.com',
+        'total_chapters': 0,
+        'created_at': 0,
+        'updated_at': 0,
+      });
+      await legacy.close();
+
+      // 2) 用生产入口重开（触发 onUpgrade → v2）
+      final upgraded = await AppDatabase.open(path: path);
+      final db = upgraded.db;
+
+      // 旧数据仍在
+      final books = await db.query('books');
+      expect(books, hasLength(1));
+      expect(books.first['title'], '旧书');
+
+      // 新表已建
+      final rulesTable = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='source_rules'",
+      );
+      expect(rulesTable, hasLength(1));
+
+      // 新列已补（ALTER TABLE）
+      final columns = await db.rawQuery('PRAGMA table_info(crawl_tasks)');
+      final names = columns.map((c) => c['name'] as String).toSet();
+      expect(names, contains('lease_until'));
+
+      // 3) 迁移后的库可正常读写规则（闭环）
+      final store = SourceRuleStore(upgraded, DataEvents());
+      final saved = await store.saveRule(
+        ruleId: 'manual.www.example.com',
+        domain: 'www.example.com',
+        version: 1,
+        ruleJson:
+            '{"ruleId": "manual.www.example.com", "domain": "www.example.com", "version": 1}',
+        enabled: true,
+      );
+      expect(saved.isSuccess, isTrue);
+      await upgraded.close();
     });
   });
 }
