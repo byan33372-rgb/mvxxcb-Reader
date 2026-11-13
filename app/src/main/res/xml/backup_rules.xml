@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!--
-  备份规则（fullBackupContent，API ≤ 30）—— WP-M 生成（04 §1，基础占位）。
-  数据库（书/章节/进度/书签/规则）与 DataStore 偏好保持默认（纳入备份）；
-  排除缓存类文件目录。正文大字段若二期迁移文件存储（03 §9），届时再评估纳入范围。
--->
-<full-backup-content>
-    <exclude domain="file" path="cache/" />
-</full-backup-content>
