@@ -11,6 +11,9 @@ import 'impl/background_impl.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 桌面端数据库环境（Android 直接返回，零行为变化）。
+  await setupDesktopDatabase();
+
   // WP-B：后台采集隔离（Android WorkManager；初始化失败自动退化为仅前台）。
   final background = WorkmanagerCrawlScheduler();
   await background.ensureInitialized();
