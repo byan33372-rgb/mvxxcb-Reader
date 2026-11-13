@@ -89,8 +89,8 @@ M2 期间 gfxinfo 口径的「万章目录滚动 2.79% jank」与本轮 Macroben
 ## 5. 复现步骤（详见 README.md）
 
 1. 启动模拟器 → `adb root` → 注入夹具（fixture-gen-m0-sql.js 生成 SQL 注入 reader.db）；
-2. `gradlew :app:installBenchmark` 并启动一次 app（创建 DB）后 force-stop 再注入；
-3. `gradlew :benchmark:connectedBenchmarkAndroidTest -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR`；
+2. `gradle :app:installBenchmark` 并启动一次 app（创建 DB）后 force-stop 再注入；
+3. `gradle :benchmark:connectedBenchmarkAndroidTest -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR`；
 4. 结果位于 `benchmark/build/outputs/connected_android_test_additional_output/`（本目录已存 raw-benchmarkData.json 快照）。
 
 ## 6. 原始产物

@@ -85,10 +85,20 @@
 ## 构建
 
 ```bash
-# 需要 JDK 17+ 与 Android SDK 35
-./gradlew :app:assembleDebug
+# 需要 JDK 17+ 与 Android SDK 35；本仓库不携带 gradlew wrapper，
+# 请使用本地 Gradle 8.10.2（或先执行 gradle wrapper --gradle-version 8.10.2 生成）
+gradle :app:assembleDebug
 # 产物：app/build/outputs/apk/debug/app-debug.apk
+
+# 单元测试（建议统一走脚本；Windows 中文路径会自动镜像到 ASCII 目录执行）
+bash scripts/run-unit-tests.sh
 ```
+
+### 开发环境（换机指引）
+
+- 依赖一律来自环境变量与 PATH：`JAVA_HOME`、`ANDROID_HOME`/`ANDROID_SDK_ROOT`、`flutter`、`gradle`。仓库内**不含任何机器绝对路径**。
+- 机器级个性化配置放 `scripts/local-env.sh`（已 gitignore，模板见 `scripts/local-env.example.sh`），可由 `FLUTTER_BIN`、`GRADLE_CMD`、`JIANYUE_BUILD_DIR` 等变量覆盖探测结果。
+- 仅当源码路径含非 ASCII 字符时（Windows 下 Flutter AOT / Gradle @argfile 的已知限制），脚本才自动启用 ASCII 镜像构建；源码路径本来就是 ASCII 时原地构建。
 
 ---
 
@@ -122,7 +132,8 @@ flutter pub get
 flutter build apk --release
 # 产物：flutter_app/build/app/outputs/flutter-apk/app-release.apk
 
-# Windows 中文路径下（Flutter AOT 不兼容非 ASCII 路径）使用镜像构建脚本：
+# 便捷脚本（自动探测 Flutter；仅在源码路径含非 ASCII 字符时启用 ASCII 镜像，
+# 产物按 pubspec 版本自动命名到 flutter_app/artifacts/）：
 bash scripts/flutter_build_ascii.sh
 ```
 

@@ -79,7 +79,7 @@ dependencies {
 官方文档要求生产者（com.android.test 模块）应用该插件以发布 profile 产物。**实证影响**（已验证，无需设备）：
 
 ```
-gradlew :app:dependencies --configuration releaseBaselineProfile
+gradle :app:dependencies --configuration releaseBaselineProfile
 releaseBaselineProfile
 \--- project :benchmark FAILED      ← 产物属性不匹配，解析失败
 ```
@@ -110,7 +110,8 @@ plugins {
 ```bash
 # 1. 启动模拟器（Android Studio Device Manager 或命令行 emulator -avd <name>）
 # 2. 生成（首次会构建 nonMinifiedRelease 变体并安装到模拟器，跑 StartupBaselineProfile 生成旅程）
-JAVA_HOME=D:\AndroidToolchain\jdk-17 D:\AndroidToolchain\gradle-8.10.2\bin\gradle.bat :app:generateReleaseBaselineProfile
+#    需要 JDK 17+ 与 Android SDK 环境变量；Gradle 用本机 8.10.2（仓库不携带 wrapper）
+gradle :app:generateReleaseBaselineProfile
 ```
 
 **产物位置**：任务结束由 `copyReleaseBaselineProfileIntoSrc` 自动落盘到
