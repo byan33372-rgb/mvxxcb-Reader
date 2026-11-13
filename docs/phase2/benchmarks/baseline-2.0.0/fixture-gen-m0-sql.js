@@ -46,5 +46,8 @@ for (let b = 0; b < 40; b++) {
 }
 
 L.push('COMMIT;');
-fs.writeFileSync('D:/AndroidToolchain/tmp/m0-perf.sql', L.join('\n'));
-console.log('OK 行数:', L.length);
+// 输出到脚本所在目录（可用第一个命令行参数覆盖），不假设任何机器路径
+const path = require('path');
+const outFile = process.argv[2] || path.join(__dirname, 'm0-perf.sql');
+fs.writeFileSync(outFile, L.join('\n'));
+console.log('OK 行数:', L.length, '→', outFile);

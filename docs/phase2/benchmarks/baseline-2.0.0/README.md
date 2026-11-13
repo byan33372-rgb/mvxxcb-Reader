@@ -30,25 +30,25 @@ benchmark/
 ## 复现步骤
 
 ```bash
-# 1. 启动模拟器（WHPX，软件 GPU）
-D:/AndroidToolchain/android-sdk/emulator/emulator.exe -avd jianyue_test \
+# 1. 启动模拟器（WHPX，软件 GPU；emulator 在 Android SDK 的 emulator/ 目录）
+"$ANDROID_HOME/emulator/emulator" -avd jianyue_test \
   -no-snapshot -no-boot-anim -gpu swiftshader_indirect -memory 3072 &
 adb wait-for-device && adb shell 'while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 2; done'
 adb root
 
 # 2. 安装被测 app（benchmark 变体）并启动一次以创建 reader.db，然后注入夹具
-gradlew :app:installBenchmark
+gradle :app:installBenchmark
 adb shell am start -n com.mvxxcb.reader/.MainActivity && sleep 10
 adb shell am force-stop com.mvxxcb.reader
 
 # 3. 生成并注入夹具（书 9527 万章目录 / 书 9528 长文阅读 / 40 本填充书）
-node 本目录/fixture-gen-m0-sql.js   # 产出 D:/AndroidToolchain/tmp/m0-perf.sql
-adb push D:/AndroidToolchain/tmp/m0-perf.sql /data/local/tmp/
+node 本目录/fixture-gen-m0-sql.js   # 产出 ./m0-perf.sql
+adb push ./m0-perf.sql /data/local/tmp/
 adb shell "cat /data/local/tmp/m0-perf.sql | sqlite3 /data/data/com.mvxxcb.reader/databases/reader.db"
 # 校验：books=42, chapters=10200(缓存 200)
 
 # 4. 运行基准（模拟器需官方抑制参数）
-gradlew :benchmark:connectedBenchmarkAndroidTest \
+gradle :benchmark:connectedBenchmarkAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR
 ```
 

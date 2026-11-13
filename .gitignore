@@ -10,3 +10,6 @@ build/
 .cxx
 
 # 注意：app/schemas/（Room schema 导出）必须随仓库提交（03 §6，QA 迁移测试依据），不在此忽略。
+
+# 机器级构建配置（不入库；模板见 scripts/local-env.example.sh）
+scripts/local-env.sh
