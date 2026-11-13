@@ -1,4 +1,4 @@
-package com.mvxxcb.reader.flutter
+package com.mvxxcb.reader
 
 import io.flutter.embedding.android.FlutterActivity
 
