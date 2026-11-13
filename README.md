@@ -1,8 +1,8 @@
 # 简阅·Flutter（mvxxcb-Reader）
 
-> **分支说明**：本分支（`flutter`）为**纯 Flutter 工程**——仓库根目录即 Flutter 项目，不含 Kotlin 版源码；Kotlin 版见 `kotlin` 分支，双端合一的完整仓库见 `main`。
+> **分支说明**：本分支（`flutter`）为**纯 Flutter 工程**——仓库根目录即 Flutter 项目，不含 Kotlin 版源码；Kotlin 版见 `kotlin` 分支，两栈合集的完整仓库见 `main`。
 
-一款 Android 小说阅读器（Flutter 重写版）：粘贴小说网址，自动识别整本小说、抓取目录与正文，生成可离线阅读的本地书籍。
+一款 Android + Windows 桌面小说阅读器（Flutter 实现）：粘贴小说网址，自动识别整本小说、抓取目录与正文，生成可离线阅读的本地书籍。
 
 内置四层解析引擎，支持从详情页、目录页或**任意章节**网址反向识别整本书；支持整本采集为 TXT、WorkManager 后台隔离采集、跨章节连续阅读与阅读进度精确恢复。
 
@@ -19,7 +19,7 @@
 ### 目录与采集
 - 完整目录：分页自动合并、去重、排序、分卷识别
 - 整本采集：断点续传 / 暂停 / 继续 / 取消 / 单章重试
-- **WorkManager 后台隔离采集（Android）**：前台服务 + 常驻通知，App 退后台/被杀后继续；前台与后台以 DB 租约互斥，不会双跑
+- **WorkManager 后台隔离采集（Android 专属）**：前台服务 + 常驻通知，App 退后台/被杀后继续；前台与后台以 DB 租约互斥，不会双跑；Windows 桌面为前台队列执行
 - 自适应限速：起始 2s → 连续成功降档至 1s；失败翻倍至 10s 封顶；429 按 Retry-After 冷却
 
 ### TXT 与阅读
@@ -36,14 +36,16 @@
 ## 环境要求
 
 - **Flutter ≥3.38（Dart ≥3.5）**：下限由 `workmanager 0.10.x` 决定；不锁定 `pubspec.lock`，各版本 Flutter 自行解析兼容依赖
-- JDK 17+、Android SDK 36（minSdk 26）
+- Android 构建：JDK 17+、Android SDK 36（minSdk 26）
+- Windows 构建：Visual Studio C++ 桌面工作负载；SQLite 原生库由 `package:sqlite3` 构建钩子自动内嵌，免安装
 
 ## 构建与运行
 
 ```bash
 flutter pub get
-flutter run                      # 调试运行
+flutter run                      # 调试运行（当前平台）
 flutter build apk --release      # 产物：build/app/outputs/flutter-apk/app-release.apk
+flutter build windows --release  # 产物：build/windows/x64/runner/Release/
 ```
 
 便捷构建脚本（自动探测 Flutter；仅在源码路径含非 ASCII 字符时启用 ASCII 镜像；产物按 pubspec 版本自动命名到 `artifacts/`）：
@@ -78,15 +80,18 @@ flutter test
 | `lib/core/` | 规则模型、错误体系、环形日志 |
 | `test/` | 单元测试 |
 | `android/app/src/main/baseline-prof.txt` | 宿主侧 Baseline Profile 补充 |
-| `docs/` | 产品设计与历史文档（跨分支保留） |
+| `docs/` | 架构方案、接口契约、数据模型、规则 Schema、整合日志 |
 
-## APK
+## 产物
 
-`artifacts/简阅-Flutter-1.1.0.apk`（包名 `com.mvxxcb.reader.flutter`，可与 Kotlin 版共存安装）。
+- Android：`artifacts/简阅-Flutter-2.1.0.apk`（包名 `com.mvxxcb.reader`）
+- Windows：`flutter build windows --release` 输出目录内的 `jianyue_flutter.exe`
+
+> 包名与旧 Kotlin 版 2.0.0 相同，但**签名与数据库结构不兼容**：已装旧版的设备须先卸载再安装本版。
 
 ## 已知限制
 
-1. **iOS 后台采集未接入**：WorkManager 后台隔离仅 Android；其他平台前台队列执行。
+1. **后台采集仅 Android**：WorkManager 无 Windows 实现，iOS/Windows 等其他平台为前台队列执行。
 2. **后台进度通知为简化版**：静态文案，不含逐章百分比（未引入 `flutter_local_notifications`）。
 3. **规则清洗一期口径**：编辑器仅支持逐行正则（regex）清洗；`selector`/`whitespace` 需导入规则 JSON。
 4. **Baseline Profile**：仅宿主侧补充（MainActivity / androidx.startup / WorkManager）；Dart AOT 启动热路径由引擎自带 profile 覆盖。
