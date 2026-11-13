@@ -12,7 +12,7 @@
 # 参考文档：https://developer.android.com/topic/performance/baselineprofiles
 
 # 宿主入口
-Lcom/mvxxcb/reader/flutter/MainActivity;
+Lcom/mvxxcb/reader/MainActivity;
 
 # androidx.startup（ContentProvider 启动器，WorkManager 初始化路径）
 Landroidx/startup/AppInitializer;

@@ -20,7 +20,7 @@ dependencies:
   crypto: ^3.0.5
   shared_preferences: ^2.3.2
   # 桌面端（Windows/Linux）sqflite 后端：默认工厂不覆盖桌面，
-  # 启动路径按平台注入 ffi 工厂（见 bootstrap.ensureDesktopDatabase）。
+  # 启动路径按平台注入 ffi 工厂（见 bootstrap.setupDesktopDatabase）。
   sqflite_common_ffi: ^2.3.2
   # 后台采集隔离（WP-B）：Android 端零额外配置，前台服务+进度通知对齐
   # Kotlin 版 ChapterDownloadWorker；iOS 一期未接（docs 已知限制）。

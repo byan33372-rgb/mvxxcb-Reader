@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'contracts.dart';
+import 'core/app_log.dart';
 import 'impl/crawl_impl.dart';
 import 'impl/crawl_task_runner.dart';
 import 'impl/data_impl.dart';
@@ -30,12 +31,17 @@ import 'impl/secure_http_impl.dart';
 /// flutter_tester（两标志均 false），不会与测试自建 ffi 工厂互踩。
 Future<void> setupDesktopDatabase() async {
   if (!Platform.isWindows && !Platform.isLinux) return;
-  sqfliteFfiInit();
-  databaseFactory = databaseFactoryFfi;
-  final support = await getApplicationSupportDirectory();
-  final dbDir = Directory(p.join(support.path, 'databases'));
-  if (!dbDir.existsSync()) dbDir.createSync(recursive: true);
-  await databaseFactory.setDatabasesPath(dbDir.path);
+  try {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+    final support = await getApplicationSupportDirectory();
+    final dbDir = Directory(p.join(support.path, 'databases'));
+    if (!dbDir.existsSync()) dbDir.createSync(recursive: true);
+    await databaseFactory.setDatabasesPath(dbDir.path);
+  } catch (e) {
+    // 装配失败不中断启动，后续 openDatabase 自带错误上报
+    AppLog.w('Bootstrap', 'desktop database setup failed: $e');
+  }
 }
 
 /// 装配产出：UI 直接消费 [services]；后台隔离复用 [crawlRunner]。
