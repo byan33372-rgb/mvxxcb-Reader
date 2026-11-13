@@ -1,7 +1,11 @@
 /// 本地数据层（sqflite）：BookRepository / ChapterRepository / ProgressRepository
 /// 与采集任务表访问。
 ///
-/// 表结构按任务书冻结（books / chapters / reading_progress / crawl_tasks）。
+/// 表结构按任务书冻结（books / chapters / reading_progress / crawl_tasks）；
+/// DB v2 追加（对齐 Kotlin 版 03 §2.5）：
+///  - `source_rules` 表：站点规则存储（domain UNIQUE，不与书关联）；
+///  - `crawl_tasks.lease_until`：任务执行租约（毫秒时间戳），前台/后台双入口
+///    防双跑——同一任务同时只允许一个执行方持有租约。
 /// 目录合并使用 `catalog_merge.dart` 的纯计划函数，执行层在事务内完成：
 ///  - URL 命中保 id；
 ///  - 标题指纹 + 邻位消歧换址保 id；
@@ -20,6 +24,7 @@ import 'package:sqflite/sqflite.dart';
 import '../contracts.dart';
 import '../core/app_result.dart';
 import '../core/reader_error.dart';
+import '../core/site_rule.dart';
 import 'catalog_merge.dart';
 import 'url_utils.dart';
 
@@ -36,11 +41,12 @@ class AppDatabase {
     final dbPath = path ?? p.join(await getDatabasesPath(), 'jianyue.db');
     final db = await openDatabase(
       dbPath,
-      version: 1,
+      version: 2,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
       },
       onCreate: _createSchema,
+      onUpgrade: _upgradeSchema,
     );
     return AppDatabase._(db);
   }
@@ -109,6 +115,7 @@ class AppDatabase {
         current_index INTEGER NOT NULL DEFAULT 0,
         current_title TEXT,
         txt_path TEXT,
+        lease_until INTEGER,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE CASCADE
@@ -127,6 +134,44 @@ class AppDatabase {
     await db.execute(
       'CREATE INDEX idx_crawl_tasks_book ON crawl_tasks(book_id, state)',
     );
+    await _createV2Objects(db);
+  }
+
+  /// v2 对象（source_rules 表）；onCreate 与 onUpgrade 共用，保证幂等。
+  static Future<void> _createV2Objects(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS source_rules (
+        rule_id TEXT PRIMARY KEY,
+        domain TEXT NOT NULL UNIQUE,
+        version INTEGER NOT NULL DEFAULT 1,
+        rule_json TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_source_rules_domain ON source_rules(domain)',
+    );
+  }
+
+  /// v1 → v2：source_rules 表 + crawl_tasks.lease_until 列（只增不删，保用户数据）。
+  static Future<void> _upgradeSchema(
+    Database db,
+    int oldVersion,
+    int newVersion,
+  ) async {
+    if (oldVersion < 2) {
+      await _createV2Objects(db);
+      // 已存在的旧表逐列补齐（ALTER TABLE 无 IF NOT EXISTS，先探测列）。
+      final columns = await db.rawQuery('PRAGMA table_info(crawl_tasks)');
+      final names = columns.map((c) => (c['name'] ?? '') as String).toSet();
+      if (!names.contains('lease_until')) {
+        await db.execute(
+          'ALTER TABLE crawl_tasks ADD COLUMN lease_until INTEGER',
+        );
+      }
+    }
   }
 }
 
@@ -682,6 +727,198 @@ class CrawlTaskStore {
       whereArgs: [taskId],
     );
     _events.notify();
+  }
+
+  // ---------------- 执行租约（前台/后台双入口防双跑） ----------------
+
+  /// 尝试获取租约：仅当无租约或租约已过期时成功（原子 UPDATE 判定）。
+  /// 返回 true = 本执行方获得租约，可以启动任务循环。
+  Future<bool> tryAcquireLease(
+    int taskId,
+    int nowMs, {
+    Duration ttl = const Duration(minutes: 2),
+  }) async {
+    final until = nowMs + ttl.inMilliseconds;
+    final rows = await _db.update(
+      'crawl_tasks',
+      {'lease_until': until},
+      where:
+          'id = ? AND (lease_until IS NULL OR lease_until <= ?) '
+          "AND state IN ('waiting','running','paused')",
+      whereArgs: [taskId, nowMs],
+    );
+    if (rows > 0) _events.notify();
+    return rows > 0;
+  }
+
+  /// 续租（循环执行中周期调用；失败仅忽略，下次重试）。
+  Future<void> renewLease(
+    int taskId,
+    int nowMs, {
+    Duration ttl = const Duration(minutes: 2),
+  }) async {
+    try {
+      await _db.update(
+        'crawl_tasks',
+        {'lease_until': nowMs + ttl.inMilliseconds},
+        where: 'id = ?',
+        whereArgs: [taskId],
+      );
+    } catch (_) {
+      // 续租失败不影响主循环（租约过期最坏情形：后台与前台短暂双跑，
+      // 逐章 DB 状态检查仍保证进度一致）
+    }
+  }
+
+  /// 释放租约（任务进入终态/暂停/取消时调用）。
+  Future<void> clearLease(int taskId) async {
+    try {
+      await _db.update(
+        'crawl_tasks',
+        {'lease_until': null},
+        where: 'id = ?',
+        whereArgs: [taskId],
+      );
+    } catch (_) {
+      // ignore
+    }
+  }
+}
+
+// ============================================================
+// 站点规则存储（DB v2，对齐 Kotlin source_rules 表 03 §2.5）
+// ============================================================
+
+class SourceRuleStore {
+  SourceRuleStore(this._database, this._events);
+
+  final AppDatabase _database;
+  final DataEvents _events;
+
+  Database get _db => _database.db;
+
+  Future<List<StoredSiteRule>> listRules() async {
+    final rows = await _db.query(
+      'source_rules',
+      orderBy: 'updated_at DESC, rule_id ASC',
+    );
+    return rows.map(_ruleFromRow).toList(growable: false);
+  }
+
+  Future<StoredSiteRule?> getRule(String ruleId) async {
+    final rows = await _db.query(
+      'source_rules',
+      where: 'rule_id = ?',
+      whereArgs: [ruleId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return _ruleFromRow(rows.first);
+  }
+
+  /// 按域名取启用中的规则（规则引擎入口；同域唯一约束保证至多一条）。
+  Future<StoredSiteRule?> findEnabledByDomain(String domain) async {
+    final rows = await _db.query(
+      'source_rules',
+      where: 'domain = ? AND enabled = 1',
+      whereArgs: [domain.trim().toLowerCase()],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return _ruleFromRow(rows.first);
+  }
+
+  /// 保存（新建或整体覆盖）。domain 冲突时拒绝——同一域名只允许一条规则，
+  /// 由 UNIQUE(domain) 兜底。
+  Future<AppResult<StoredSiteRule>> saveRule({
+    required String ruleId,
+    required String domain,
+    required int version,
+    required String ruleJson,
+    required bool enabled,
+  }) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final normalizedDomain = domain.trim().toLowerCase();
+    try {
+      final existing = await getRule(ruleId);
+      final values = <String, Object?>{
+        'domain': normalizedDomain,
+        'version': version,
+        'rule_json': ruleJson,
+        'enabled': enabled ? 1 : 0,
+        'updated_at': now,
+      };
+      if (existing == null) {
+        values['created_at'] = now;
+        await _db.insert(
+          'source_rules',
+          values..['rule_id'] = ruleId,
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+      } else {
+        // 保留原 created_at；域名被其他规则占用时 INSERT/UPDATE 报约束错。
+        await _db.update(
+          'source_rules',
+          values,
+          where: 'rule_id = ?',
+          whereArgs: [ruleId],
+        );
+      }
+      _events.notify();
+      return Success((await getRule(ruleId))!);
+    } catch (e) {
+      return Failure(StorageError('DB_ERROR', '保存站点规则失败: $e'));
+    }
+  }
+
+  Future<AppResult<void>> setEnabled(String ruleId, bool enabled) async {
+    try {
+      final rows = await _db.update(
+        'source_rules',
+        {
+          'enabled': enabled ? 1 : 0,
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+        },
+        where: 'rule_id = ?',
+        whereArgs: [ruleId],
+      );
+      if (rows == 0) {
+        return Failure(StateError('RULE_NOT_FOUND', 'setEnabled: $ruleId'));
+      }
+      _events.notify();
+      return const Success<void>(null);
+    } catch (e) {
+      return Failure(StorageError('DB_ERROR', '更新规则开关失败: $e'));
+    }
+  }
+
+  Future<AppResult<void>> deleteRule(String ruleId) async {
+    try {
+      final rows = await _db.delete(
+        'source_rules',
+        where: 'rule_id = ?',
+        whereArgs: [ruleId],
+      );
+      if (rows == 0) {
+        return Failure(StateError('RULE_NOT_FOUND', 'deleteRule: $ruleId'));
+      }
+      _events.notify();
+      return const Success<void>(null);
+    } catch (e) {
+      return Failure(StorageError('DB_ERROR', '删除站点规则失败: $e'));
+    }
+  }
+
+  StoredSiteRule _ruleFromRow(Map<String, Object?> row) {
+    return StoredSiteRule(
+      ruleId: (row['rule_id'] as String?) ?? '',
+      domain: (row['domain'] as String?) ?? '',
+      version: (row['version'] as int?) ?? 1,
+      ruleJson: (row['rule_json'] as String?) ?? '',
+      enabled: ((row['enabled'] as int?) ?? 0) == 1,
+      createdAt: (row['created_at'] as int?) ?? 0,
+      updatedAt: (row['updated_at'] as int?) ?? 0,
+    );
   }
 }
 
