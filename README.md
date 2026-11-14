@@ -1,10 +1,10 @@
-# 简阅·Flutter（mvxxcb-Reader）
+# 简阅 · Flutter（mvxxcb-Reader）
 
-> **分支说明**：本分支（`flutter`）为**纯 Flutter 工程**——仓库根目录即 Flutter 项目，不含 Kotlin 版源码；Kotlin 版见 `kotlin` 分支，两栈合集的完整仓库见 `main`。
+> **分支说明**：本分支（`flutter`）为**纯 Flutter 工程**——仓库根目录即 Flutter 项目，不含 Kotlin 版源码；Kotlin 版见 `kotlin` 分支，两栈合集的完整仓库见 `main`
 
 一款 Android + Windows 桌面小说阅读器（Flutter 实现）：粘贴小说网址，自动识别整本小说、抓取目录与正文，生成可离线阅读的本地书籍。
 
-内置四层解析引擎，支持从详情页、目录页或**任意章节**网址反向识别整本书；支持整本采集为 TXT、WorkManager 后台隔离采集、跨章节连续阅读与阅读进度精确恢复。
+内置四层解析引擎，支持从详情页、目录页或**任意章节**网址反向识别整本书；支持整本采集为 TXT、WorkManager 后台隔离采集、跨章节连续阅读与阅读进度精确恢复
 
 ---
 
@@ -57,9 +57,9 @@ bash scripts/flutter_build_ascii.sh --debug  # debug
 
 ### 开发环境（换机指引）
 
-- 依赖一律来自环境变量与 PATH：`FLUTTER_BIN`、`JAVA_HOME`、`ANDROID_HOME`/`ANDROID_SDK_ROOT`。仓库内**不含任何机器绝对路径**。
-- 机器级个性化配置放 `scripts/local-env.sh`（已 gitignore，模板见 `scripts/local-env.example.sh`）。
-- 仅当源码路径含非 ASCII 字符时（Windows 下 Flutter AOT 的已知限制），脚本才自动启用 ASCII 镜像；可用 `JIANYUE_BUILD_DIR` 指定镜像目录。
+- 依赖一律来自环境变量与 PATH：`FLUTTER_BIN`、`JAVA_HOME`、`ANDROID_HOME`/`ANDROID_SDK_ROOT`
+- 机器级个性化配置放 `scripts/local-env.sh`（已 gitignore，模板见 `scripts/local-env.example.sh`）
+- 仅当源码路径含非 ASCII 字符时（Windows 下 Flutter AOT 的已知限制），脚本才自动启用 ASCII 镜像；可用 `JIANYUE_BUILD_DIR` 指定镜像目录
 
 ## 测试
 
@@ -68,7 +68,7 @@ flutter analyze
 flutter test
 ```
 
-当前 69 个测试全绿（解析 / 目录合并 / TXT / URL / 站点规则 Schema / 自适应限速 / 诊断 / DB v2 与租约 / v1→v2 迁移）。
+当前 69 个测试全绿（解析 / 目录合并 / TXT / URL / 站点规则 Schema / 自适应限速 / 诊断 / DB v2 与租约 / v1→v2 迁移）
 
 ## 代码结构
 
@@ -87,15 +87,15 @@ flutter test
 - Android：`artifacts/简阅-Flutter-2.1.0.apk`（包名 `com.mvxxcb.reader`）
 - Windows：`flutter build windows --release` 输出目录内的 `jianyue_flutter.exe`
 
-> 包名与旧 Kotlin 版 2.0.0 相同，但**签名与数据库结构不兼容**：已装旧版的设备须先卸载再安装本版。
+> 包名与旧 Kotlin 版 2.0.0 相同，但**签名与数据库结构不兼容**：已装旧版的设备须先卸载再安装本版
 
 ## 已知限制
 
-1. **后台采集仅 Android**：WorkManager 无 Windows 实现，iOS/Windows 等其他平台为前台队列执行。
-2. **后台进度通知为简化版**：静态文案，不含逐章百分比（未引入 `flutter_local_notifications`）。
-3. **规则清洗一期口径**：编辑器仅支持逐行正则（regex）清洗；`selector`/`whitespace` 需导入规则 JSON。
-4. **Baseline Profile**：仅宿主侧补充（MainActivity / androidx.startup / WorkManager）；Dart AOT 启动热路径由引擎自带 profile 覆盖。
-5. **诊断反馈日志口径**：仅应用内环形缓冲（最近 120 行），不含系统 logcat；URL 一律脱敏。
+1. **后台采集仅 Android**：WorkManager 无 Windows 实现，iOS/Windows 等其他平台为前台队列执行
+2. **后台进度通知为简化版**：静态文案，不含逐章百分比（未引入 `flutter_local_notifications`）
+3. **规则清洗一期口径**：编辑器仅支持逐行正则（regex）清洗；`selector`/`whitespace` 需导入规则 JSON
+4. **Baseline Profile**：仅宿主侧补充（MainActivity / androidx.startup / WorkManager）；Dart AOT 启动热路径由引擎自带 profile 覆盖
+5. **诊断反馈日志口径**：仅应用内环形缓冲（最近 120 行），不含系统 logcat；URL 一律脱敏
 
 ---
 
@@ -105,4 +105,4 @@ flutter test
 
 ## 声明
 
-本应用仅用于个人阅读使用，不提供任何小说内容。采集功能仅保存用户有权访问且允许保存的网页内容，遵守合理请求频率，不绕过任何付费墙、登录验证、验证码或其他访问控制。请遵守目标网站的服务条款及当地法律法规。
+本应用仅用于个人阅读使用，不提供任何小说内容。采集功能仅保存用户有权访问且允许保存的网页内容，遵守合理请求频率，不绕过任何付费墙、登录验证、验证码或其他访问控制。请遵守目标网站的服务条款及当地法律法规
