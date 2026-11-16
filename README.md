@@ -6,6 +6,11 @@
 
 内置多网站解析引擎，支持从详情页、目录页或**任意章节**网址反向识别整本书；支持整本采集为 TXT、跨章节连续阅读与阅读进度精确恢复。
 
+> **📢 仓库拆分（2026-11-17）**：本项目已按语言拆分为两个独立仓库——
+> - **Android 原生版（Kotlin/Compose）**：https://github.com/your-account/mvxxcb-Reader-Android
+> - **Flutter 版（Android + Windows 桌面，2.1.0）**：https://github.com/your-account/mvxxcb-Reader-Flutter
+> 本仓库（mvxxcb-Reader）保留为双端合一的历史归档，不再更新；历史 tag 与 Release 继续有效。
+
 ---
 
 ## 功能
