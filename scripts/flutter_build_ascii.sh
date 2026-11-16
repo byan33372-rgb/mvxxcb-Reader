@@ -118,7 +118,8 @@ VERSION="$(sed -n 's/^version:[[:space:]]*\([0-9][0-9.]*\).*/\1/p' "$SRC/pubspec
 [ -n "$VERSION" ] || VERSION="dev"
 
 OUT="$BUILD_DIR/build/app/outputs/flutter-apk"
-TARGET="$SRC/artifacts"
+# 产物归档到仓库根 artifacts/（与 Kotlin 版 APK 同目录，统一发布；保持可移植，不写机器绝对路径）
+TARGET="$REPO_ROOT/artifacts"
 mkdir -p "$TARGET"
 if [ "$VARIANT" = "--debug" ]; then
   cp "$OUT/app-debug.apk" "$TARGET/简阅-Flutter-debug.apk"
